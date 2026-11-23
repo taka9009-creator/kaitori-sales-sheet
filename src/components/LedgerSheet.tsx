@@ -3,12 +3,13 @@ import {
   FileSpreadsheet, Star, CheckCircle2, Coins, Plus, FileDown,
   Undo2, Redo2, Printer, Trash2, Copy, Search, ArrowUpDown,
   RotateCcw, Target, Smartphone, Table, Flame, CornerDownLeft,
-  Gavel, UserCheck, TrendingUp, MapPin
+  Gavel, UserCheck, TrendingUp, MapPin, Map as MapIcon, ChevronDown, ChevronUp, BookOpen
 } from 'lucide-react';
 import {
   DealRecord, AdCosts, STAFF_LIST, MEDIA_LIST, STATUS_LIST, CATEGORY_PRESETS,
   formatCurrency, calcStaffStats, calcRecordSales, calcRecordGross
 } from '../data';
+import { WorkflowMapDiagram, GuideActionType } from './GuideModal';
 
 export type StatusFilterType = 'すべて' | '完結' | '繰越' | '市場出品中';
 
@@ -18,6 +19,7 @@ export const SheetHeader: React.FC<{
   onOpenAddModal: () => void;
   onOpenGoldCalc: () => void;
   onOpenExportModal: () => void;
+  onOpenGuide: () => void;
   statusFilter: StatusFilterType;
   onChangeStatusFilter: (s: StatusFilterType) => void;
   mediaFilter: string;
@@ -36,6 +38,7 @@ export const SheetHeader: React.FC<{
   onOpenAddModal,
   onOpenGoldCalc,
   onOpenExportModal,
+  onOpenGuide,
   statusFilter,
   onChangeStatusFilter,
   mediaFilter,
@@ -123,18 +126,25 @@ export const SheetHeader: React.FC<{
             </div>
 
             <div className="flex items-center gap-0.5 text-xs text-gray-700 mt-0.5 flex-wrap">
-              {['ファイル', '編集', '表示', '挿入', 'ツール', 'データ'].map(menu => (
+              {['ファイル', '編集', '表示', '挿入', 'ツール', 'データ', 'ガイド'].map(menu => (
                 <div key={menu} className="relative">
                   <button
-                    onClick={() => setOpenMenu(openMenu === menu ? null : menu)}
-                    onMouseEnter={() => openMenu && setOpenMenu(menu)}
+                    onClick={() => {
+                      if (menu === 'ガイド') {
+                        setOpenMenu(null);
+                        onOpenGuide();
+                      } else {
+                        setOpenMenu(openMenu === menu ? null : menu);
+                      }
+                    }}
+                    onMouseEnter={() => menu !== 'ガイド' && openMenu && setOpenMenu(menu)}
                     className={`px-2 py-0.5 rounded hover:bg-gray-100 text-gray-700 transition-colors cursor-pointer ${
                       openMenu === menu ? 'bg-gray-100 text-emerald-700 font-medium' : ''
-                    }`}
+                    } ${menu === 'ガイド' ? 'text-sky-700 font-semibold hover:bg-sky-50' : ''}`}
                   >
                     {menu}
                   </button>
-                  {openMenu === menu && (
+                  {openMenu === menu && menu !== 'ガイド' && (
                     <div
                       className="absolute top-full left-0 z-50 min-w-52 bg-white border border-gray-200 rounded-md shadow-lg py-1 text-xs text-gray-700"
                       onMouseLeave={() => setOpenMenu(null)}
@@ -244,6 +254,15 @@ export const SheetHeader: React.FC<{
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={onOpenGuide}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-300 rounded-lg text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
+            title="全体の流れ（1枚の地図）と詳しい操作ガイドを開く"
+          >
+            <MapIcon className="w-3.5 h-3.5 text-sky-600" />
+            <span>全体マップ・使い方</span>
+          </button>
+
           <button
             onClick={onOpenGoldCalc}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-lg text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
@@ -389,6 +408,8 @@ export const LedgerSheet: React.FC<{
   onDuplicateRecord: (r: DealRecord) => void;
   onSendToMarket: (r: DealRecord) => void;
   onOpenAddModal: () => void;
+  onOpenGuide: () => void;
+  onGuideAction: (action: GuideActionType) => void;
   statusFilter: StatusFilterType;
   mediaFilter: string;
   onUpdateMediaAdCost: (media: string, val: number) => void;
@@ -405,6 +426,8 @@ export const LedgerSheet: React.FC<{
   onDuplicateRecord,
   onSendToMarket,
   onOpenAddModal,
+  onOpenGuide,
+  onGuideAction,
   statusFilter,
   mediaFilter,
   onUpdateMediaAdCost,
@@ -421,6 +444,7 @@ export const LedgerSheet: React.FC<{
   const [sortBy, setSortBy] = useState<'default' | 'purchaseDesc' | 'salesDesc' | 'grossDesc'>('default');
   const [editingAdMedia, setEditingAdMedia] = useState<'チラシ' | 'HP' | null>(null);
   const [editingTarget, setEditingTarget] = useState(false);
+  const [showStartMap, setShowStartMap] = useState(true);
 
   const getTodayMD = () => {
     const now = new Date();
@@ -936,6 +960,52 @@ export const LedgerSheet: React.FC<{
               </div>
             </div>
           </div>
+
+          {/* 初期画面ガイド: 当月データが0件のとき「まずは全体の流れ」1枚マップを差し出す */}
+          {records.length === 0 && (
+            <div className="border-2 border-sky-300 rounded-2xl bg-white shadow-xs overflow-hidden">
+              <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 bg-sky-50 border-b border-sky-200">
+                <div className="flex items-center gap-2">
+                  <MapIcon className="w-4 h-4 text-sky-700" />
+                  <span className="font-bold text-xs sm:text-sm text-sky-950">
+                    はじめての方へ：まずは1枚の地図で全体の流れをつかみましょう（データ登録後に自動で隠れます）
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={onOpenGuide}
+                    className="px-2.5 py-1 bg-white hover:bg-sky-100 text-sky-800 border border-sky-300 rounded-lg text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                  >
+                    <BookOpen className="w-3.5 h-3.5" />
+                    <span>細かい操作ガイドを開く</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowStartMap(!showStartMap)}
+                    className="px-2.5 py-1 bg-sky-700 hover:bg-sky-800 text-white rounded-lg text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                  >
+                    {showStartMap ? (
+                      <>
+                        <ChevronUp className="w-3.5 h-3.5" />
+                        <span>地図を折りたたむ</span>
+                      </>
+                    ) : (
+                      <>
+                        <ChevronDown className="w-3.5 h-3.5" />
+                        <span>地図を表示</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+              {showStartMap && (
+                <div className="p-3">
+                  <WorkflowMapDiagram onAction={onGuideAction} compact />
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Card View Mode (Mobile / Field Mode) */}
           {viewMode === 'card' ? (

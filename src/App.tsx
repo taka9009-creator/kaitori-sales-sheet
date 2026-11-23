@@ -10,6 +10,7 @@ import {
 import { SheetHeader, LedgerSheet, StatusFilterType } from './components/LedgerSheet';
 import { MarketView, PersonalAnalyticsView, MediaAnalyticsView } from './components/MarketAndAnalytics';
 import { AddDealModal, AddDealOptions, GoldCalcModal, ExportModal } from './components/Modals';
+import { GuideModal, GuideActionType } from './components/GuideModal';
 
 const STORAGE_KEYS = {
   RECORDS: 'kaitori_pro_records_v3',
@@ -84,9 +85,40 @@ export default function App() {
   const [isAddOpen, setIsAddOpen] = useState<boolean>(false);
   const [isGoldOpen, setIsGoldOpen] = useState<boolean>(false);
   const [isExportOpen, setIsExportOpen] = useState<boolean>(false);
+  const [isGuideOpen, setIsGuideOpen] = useState<boolean>(false);
   const [goldPreset, setGoldPreset] = useState<GoldPreset | null>(null);
   const [lastSavedText, setLastSavedText] = useState<string>('変更を自動保存済');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const handleGuideAction = (action: GuideActionType) => {
+    switch (action) {
+      case 'gold':
+        setIsGoldOpen(true);
+        break;
+      case 'add':
+        setGoldPreset(null);
+        setIsAddOpen(true);
+        break;
+      case 'ledger':
+        setActiveTab('ledger');
+        break;
+      case 'market':
+        setActiveTab('市場管理');
+        break;
+      case 'analytics':
+        setActiveTab('収支・日別分析');
+        break;
+      case 'media':
+        setActiveTab('媒体別分析');
+        break;
+      case 'carryover':
+        setActiveTab('繰越管理');
+        break;
+      case 'export':
+        setIsExportOpen(true);
+        break;
+    }
+  };
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -411,6 +443,7 @@ export default function App() {
         }}
         onOpenGoldCalc={() => setIsGoldOpen(true)}
         onOpenExportModal={() => setIsExportOpen(true)}
+        onOpenGuide={() => setIsGuideOpen(true)}
         statusFilter={statusFilter}
         onChangeStatusFilter={setStatusFilter}
         mediaFilter={mediaFilter}
@@ -442,6 +475,8 @@ export default function App() {
               setGoldPreset(null);
               setIsAddOpen(true);
             }}
+            onOpenGuide={() => setIsGuideOpen(true)}
+            onGuideAction={handleGuideAction}
             statusFilter={statusFilter}
             mediaFilter={mediaFilter}
             onUpdateMediaAdCost={handleUpdateMediaAdCost}
@@ -689,6 +724,12 @@ export default function App() {
         monthName={activeMonth}
         onImportRecords={imported => pushRecordsState([...imported, ...records])}
         onResetDefault={handleResetDefault}
+      />
+
+      <GuideModal
+        isOpen={isGuideOpen}
+        onClose={() => setIsGuideOpen(false)}
+        onNavigateAction={handleGuideAction}
       />
     </div>
   );
