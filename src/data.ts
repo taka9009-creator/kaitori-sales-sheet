@@ -64,6 +64,15 @@ export const STAFF_LIST = ['松浦'] as const;
 export const MEDIA_LIST = ['チラシ', 'HP', 'リピート', '紹介', '看板/その他'] as const;
 export const STATUS_LIST = ['完結', '一部繰越', '全量繰越(未売却)', '市場出品中'] as const;
 export const MARKET_STATUS_LIST = ['出品準備完了', '保管中', '落札完了', '不落札(繰越)'] as const;
+export const CATEGORY_PRESETS = [
+  '貴金属・金',
+  'ブランド・時計',
+  '古銭・切手',
+  '骨董・茶道具',
+  '着物・毛皮',
+  '家電・カメラ',
+  '不用品回収・その他',
+] as const;
 
 export const INITIAL_MONTHS = ['2026/9', '2026/10'];
 
@@ -95,13 +104,18 @@ export const formatPercent = (val: number): string => {
 export const calcRecordSales = (r: DealRecord): number =>
   (r.goldSales || 0) + (r.marketSales || 0) + (r.yahooSales || 0) + (r.recoverySales || 0);
 
+export const calcRecordExpenses = (r: DealRecord): number =>
+  (r.transportCost || 0) + (r.disposalCost || 0);
+
 export const calcRecordGross = (r: DealRecord): number =>
   calcRecordSales(r) - (r.purchaseAmount || 0);
 
+export const calcRecordNet = (r: DealRecord): number =>
+  calcRecordGross(r) - calcRecordExpenses(r);
+
 export const calcStaffStats = (staffName: string, records: DealRecord[], adCost: number) => {
-  const filtered = staffName === '店' || staffName === '店舗全体' || staffName === '全員'
-    ? records
-    : records.filter(r => r.staff === staffName);
+  // 松浦専用（1人用）として全レコードを対象に集計
+  const filtered = records;
 
   const purchaseTotal = filtered.reduce((acc, r) => acc + (r.purchaseAmount || 0), 0);
   const purchaseCount = filtered.length;
@@ -111,7 +125,7 @@ export const calcStaffStats = (staffName: string, records: DealRecord[], adCost:
   const recoverySalesTotal = filtered.reduce((acc, r) => acc + (r.recoverySales || 0), 0);
   const salesTotal = goldSalesTotal + marketSalesTotal + yahooSalesTotal + recoverySalesTotal;
   const carryoverTotal = filtered.reduce((acc, r) => acc + (r.carryover || 0), 0);
-  const otherExpenses = filtered.reduce((acc, r) => acc + (r.transportCost || 0) + (r.disposalCost || 0), 0);
+  const otherExpenses = filtered.reduce((acc, r) => acc + calcRecordExpenses(r), 0);
   const grossProfit = salesTotal - purchaseTotal;
   const averageCustomerSpend = purchaseCount > 0 ? Math.round(salesTotal / purchaseCount) : 0;
   const netProfit = grossProfit - adCost - otherExpenses;
@@ -119,12 +133,14 @@ export const calcStaffStats = (staffName: string, records: DealRecord[], adCost:
   const mediaBreakdown = MEDIA_LIST.map(media => {
     const mRecs = filtered.filter(r => r.media === media);
     const count = mRecs.length;
+    const purchaseSum = mRecs.reduce((acc, r) => acc + (r.purchaseAmount || 0), 0);
     const goldProfit = mRecs.reduce((acc, r) => acc + (r.estimatedGoldGrossProfit || 0), 0);
     const totalGross = mRecs.reduce((acc, r) => acc + calcRecordGross(r), 0);
     const totalSales = mRecs.reduce((acc, r) => acc + calcRecordSales(r), 0);
     return {
       media,
       count,
+      purchaseSum,
       goldProfit,
       totalGross,
       totalSales,

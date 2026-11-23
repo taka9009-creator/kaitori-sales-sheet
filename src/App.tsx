@@ -3,13 +3,13 @@ import {
   TableProperties, Gavel, BarChart3, Layers, Calendar, Plus, ArrowRightLeft
 } from 'lucide-react';
 import {
-  DealRecord, MarketItem, AdCosts, GoldPreset,
+  DealRecord, MarketItem, AdCosts, GoldPreset, STAFF_LIST,
   INITIAL_RECORDS, INITIAL_MARKET_ITEMS, INITIAL_AD_COSTS, INITIAL_MONTHS,
   formatCurrency, calcRecordSales
 } from './data';
-import { SheetHeader, LedgerSheet } from './components/LedgerSheet';
-import { MarketView, StaffAnalyticsView, MediaAnalyticsView } from './components/MarketAndAnalytics';
-import { AddDealModal, GoldCalcModal, ExportModal } from './components/Modals';
+import { SheetHeader, LedgerSheet, StatusFilterType } from './components/LedgerSheet';
+import { MarketView, PersonalAnalyticsView, MediaAnalyticsView } from './components/MarketAndAnalytics';
+import { AddDealModal, AddDealOptions, GoldCalcModal, ExportModal } from './components/Modals';
 
 const STORAGE_KEYS = {
   RECORDS: 'kaitori_pro_records_v3',
@@ -36,7 +36,7 @@ export default function App() {
   });
 
   const [activeMonth, setActiveMonth] = useState<string>('2026/9');
-  const [activeTab, setActiveTab] = useState<string>('ledger'); // 'ledger' | '市場管理' | 'スタッフ別集計' | '媒体別分析' | '繰越管理'
+  const [activeTab, setActiveTab] = useState<string>('ledger'); // 'ledger' | '市場管理' | '収支・日別分析' | '媒体別分析' | '繰越管理'
   const [viewMode, setViewMode] = useState<'table' | 'card'>('table');
 
   const [targetGrossProfit, setTargetGrossProfit] = useState<number>(() => {
@@ -79,13 +79,21 @@ export default function App() {
     return saved ? Number(saved) : 0;
   });
 
-  const [selectedStaff, setSelectedStaff] = useState<string>('全員');
-  const [showOnlyCarryover, setShowOnlyCarryover] = useState<boolean>(false);
+  const [statusFilter, setStatusFilter] = useState<StatusFilterType>('すべて');
+  const [mediaFilter, setMediaFilter] = useState<string>('すべて');
   const [isAddOpen, setIsAddOpen] = useState<boolean>(false);
   const [isGoldOpen, setIsGoldOpen] = useState<boolean>(false);
   const [isExportOpen, setIsExportOpen] = useState<boolean>(false);
   const [goldPreset, setGoldPreset] = useState<GoldPreset | null>(null);
   const [lastSavedText, setLastSavedText] = useState<string>('変更を自動保存済');
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => {
+      setToastMessage(prev => (prev === msg ? null : prev));
+    }, 3500);
+  };
 
   useEffect(() => {
     try {
@@ -133,10 +141,68 @@ export default function App() {
     }
   };
 
-  const handleAddRecord = (rec: DealRecord) => {
-    const withMonth = { ...rec, month: rec.month || activeMonth };
+  const createMarketItemFromDeal = (
+    rec: DealRecord,
+    targetMarketName = '関東道具市場',
+    estimatedMarketPrice?: number
+  ): MarketItem => {
+    const year = (rec.month || activeMonth).split('/')[0] || '2026';
+    const fullDate = rec.date.includes('/') && rec.date.split('/').length === 2
+      ? `${year}/${rec.date.split('/')[0].padStart(2, '0')}/${rec.date.split('/')[1].padStart(2, '0')}`
+      : rec.date;
+    return {
+      id: `mkt-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      purchaseDate: fullDate,
+      itemDescription: [rec.category, rec.customerName ? `(${rec.customerName})` : ''].filter(Boolean).join(' ') || rec.customerName,
+      staff: STAFF_LIST[0],
+      purchaseCost: rec.purchaseAmount || 0,
+      estimatedMarketPrice: estimatedMarketPrice ?? Math.round((rec.purchaseAmount || 0) * 1.5),
+      targetMarketName,
+      auctionDate: '',
+      actualSoldPrice: null,
+      commissionRate: 10,
+      status: '出品準備完了',
+      notes: rec.memo || '',
+      linkedDealId: rec.id,
+    };
+  };
+
+  const handleAddRecord = (rec: DealRecord, options?: AddDealOptions) => {
+    const withMonth: DealRecord = {
+      ...rec,
+      staff: STAFF_LIST[0],
+      month: rec.month || activeMonth,
+      status: options?.sendToMarket ? '市場出品中' : rec.status,
+    };
     pushRecordsState([withMonth, ...records]);
+    if (options?.sendToMarket) {
+      const mktItem = createMarketItemFromDeal(
+        withMonth,
+        options.targetMarketName || '関東道具市場',
+        options.estimatedMarketPrice
+      );
+      setMarketItems(prev => [mktItem, ...prev]);
+      showToast(`台帳登録と同時に「${mktItem.itemDescription}」を市場管理へ登録しました`);
+    }
     setGoldPreset(null);
+  };
+
+  const handleSendDealToMarket = (rec: DealRecord) => {
+    const alreadyExists = marketItems.some(m => m.linkedDealId === rec.id);
+    if (alreadyExists) {
+      if (window.confirm(`「${rec.customerName} / ${rec.category || '案件'}」は既に市場管理リストに登録済みです。市場管理タブを開きますか？`)) {
+        setActiveTab('市場管理');
+      }
+      return;
+    }
+    const mktItem = createMarketItemFromDeal(rec);
+    setMarketItems(prev => [mktItem, ...prev]);
+    if (rec.status !== '市場出品中') {
+      pushRecordsState(
+        records.map(r => (r.id === rec.id ? { ...r, status: '市場出品中' } : r))
+      );
+    }
+    showToast(`「${rec.customerName} (${rec.category || '品目'})」を市場管理へ出品登録しました`);
   };
 
   const handleUpdateRecord = (rec: DealRecord) => {
@@ -218,7 +284,7 @@ export default function App() {
           marketSales: netProceeds,
           carryover: 0,
           status: '完結',
-          memo: `${target.memo} [市場落札反映: ¥${formatCurrency(item.actualSoldPrice)} / 手数料控除後 ¥${formatCurrency(netProceeds)}]`,
+          memo: `${target.memo ? target.memo + ' ' : ''}[市場落札反映: ¥${formatCurrency(item.actualSoldPrice)} / 手数料控除後 ¥${formatCurrency(netProceeds)}]`,
         });
         alert(`当月台帳（${target.customerName}）の市場売上に ¥${formatCurrency(netProceeds)}（手数料控除後）を反映し、ステータスを「完結」に更新しました！`);
         return;
@@ -228,7 +294,7 @@ export default function App() {
       id: `rec-mkt-${Date.now()}`,
       month: activeMonth,
       date: item.auctionDate.slice(5) || `${activeMonth.split('/')[1]}/28`,
-      staff: item.staff,
+      staff: STAFF_LIST[0],
       customerName: `市場落札: ${item.targetMarketName}`,
       area: '',
       category: item.itemDescription,
@@ -267,19 +333,37 @@ export default function App() {
     });
     setPrevCarryover(0);
     setTargetGrossProfit(0);
-    setSelectedStaff('全員');
-    setShowOnlyCarryover(false);
+    setStatusFilter('すべて');
+    setMediaFilter('すべて');
   };
 
   const handleUpdateStaffAdCost = (_staff: '松浦', val: number) => {
-    setAdCosts(prev => ({
-      ...prev,
-      松浦: val,
-      mediaCosts: {
-        ...prev.mediaCosts,
-        チラシ: val,
-      },
-    }));
+    setAdCosts((prev): AdCosts => {
+      const otherMediaTotal = Object.entries(prev.mediaCosts)
+        .filter(([k]) => k !== 'チラシ')
+        .reduce((s, [, v]) => s + v, 0);
+      if (val >= otherMediaTotal) {
+        return {
+          ...prev,
+          松浦: val,
+          mediaCosts: {
+            ...prev.mediaCosts,
+            チラシ: val - otherMediaTotal,
+          },
+        };
+      }
+      return {
+        ...prev,
+        松浦: val,
+        mediaCosts: {
+          チラシ: val,
+          HP: 0,
+          リピート: 0,
+          紹介: 0,
+          '看板/その他': 0,
+        },
+      };
+    });
   };
 
   const handleUpdateMediaAdCost = (media: string, val: number) => {
@@ -304,7 +388,20 @@ export default function App() {
   const currentCarryoverSum = carryoverRecords.reduce((s, r) => s + r.carryover, 0);
 
   return (
-    <div className="flex flex-col h-screen w-screen overflow-hidden bg-gray-100 font-sans">
+    <div className="flex flex-col h-screen w-screen overflow-hidden bg-gray-100 font-sans relative">
+      {toastMessage && (
+        <div className="fixed bottom-12 right-4 z-50 bg-slate-900 text-white px-4 py-2.5 rounded-xl shadow-xl border border-emerald-500/50 text-xs font-semibold flex items-center gap-2 animate-fade-in">
+          <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
+          <span>{toastMessage}</span>
+          <button
+            onClick={() => setActiveTab('市場管理')}
+            className="ml-2 px-2 py-0.5 bg-emerald-600 hover:bg-emerald-500 rounded text-[11px] font-bold cursor-pointer"
+          >
+            市場管理を開く
+          </button>
+        </div>
+      )}
+
       <SheetHeader
         sheetTitle={sheetTitle}
         onTitleChange={setSheetTitle}
@@ -314,10 +411,10 @@ export default function App() {
         }}
         onOpenGoldCalc={() => setIsGoldOpen(true)}
         onOpenExportModal={() => setIsExportOpen(true)}
-        showOnlyCarryover={showOnlyCarryover}
-        onToggleCarryoverFilter={() => setShowOnlyCarryover(!showOnlyCarryover)}
-        selectedStaff={selectedStaff}
-        onSelectStaff={setSelectedStaff}
+        statusFilter={statusFilter}
+        onChangeStatusFilter={setStatusFilter}
+        mediaFilter={mediaFilter}
+        onChangeMediaFilter={setMediaFilter}
         onUndo={handleUndo}
         onRedo={handleRedo}
         canUndo={historyIndex > 0}
@@ -340,13 +437,14 @@ export default function App() {
             onUpdateRecord={handleUpdateRecord}
             onDeleteRecord={handleDeleteRecord}
             onDuplicateRecord={handleDuplicateRecord}
+            onSendToMarket={handleSendDealToMarket}
             onOpenAddModal={() => {
               setGoldPreset(null);
               setIsAddOpen(true);
             }}
-            selectedStaff={selectedStaff}
-            showOnlyCarryover={showOnlyCarryover}
-            onUpdateStaffAdCost={handleUpdateStaffAdCost}
+            statusFilter={statusFilter}
+            mediaFilter={mediaFilter}
+            onUpdateMediaAdCost={handleUpdateMediaAdCost}
             viewMode={viewMode}
           />
         )}
@@ -361,8 +459,8 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'スタッフ別集計' && (
-          <StaffAnalyticsView
+        {activeTab === '収支・日別分析' && (
+          <PersonalAnalyticsView
             records={currentMonthRecords}
             adCosts={adCosts}
             onUpdateStaffAdCost={handleUpdateStaffAdCost}
@@ -426,6 +524,7 @@ export default function App() {
                       <input
                         type="number"
                         value={prevCarryover}
+                        onFocus={e => e.target.select()}
                         onChange={e => setPrevCarryover(Number(e.target.value) || 0)}
                         className="w-full px-2 py-1 bg-white border border-purple-300 rounded font-mono text-base font-bold text-purple-900 outline-none"
                       />
@@ -453,7 +552,7 @@ export default function App() {
                     <thead>
                       <tr className="bg-gray-100 text-gray-600 border-b border-gray-200 text-center">
                         <th className="py-2 px-3 border-r">日付</th>
-                        <th className="py-2 px-3 border-r">担当</th>
+                        <th className="py-2 px-3 border-r text-left">訪問地域</th>
                         <th className="py-2 px-3 border-r text-left">お客様名</th>
                         <th className="py-2 px-3 border-r text-left">品目カテゴリ</th>
                         <th className="py-2 px-3 border-r text-right">買取仕入額</th>
@@ -472,8 +571,8 @@ export default function App() {
                         carryoverRecords.map(r => (
                           <tr key={r.id} className="hover:bg-purple-50/30">
                             <td className="py-2 px-3 text-center border-r font-sans">{r.date}</td>
-                            <td className="py-2 px-3 text-center border-r font-sans font-bold">{r.staff}</td>
-                            <td className="py-2 px-3 border-r font-sans">{r.customerName}</td>
+                            <td className="py-2 px-3 border-r font-sans text-gray-600">{r.area || '-'}</td>
+                            <td className="py-2 px-3 border-r font-sans font-bold">{r.customerName}</td>
                             <td className="py-2 px-3 border-r font-sans text-gray-600">{r.category}</td>
                             <td className="py-2 px-3 text-right border-r text-rose-700">¥{formatCurrency(r.purchaseAmount)}</td>
                             <td className="py-2 px-3 text-right border-r font-bold text-purple-700 bg-purple-50/40">
@@ -529,7 +628,7 @@ export default function App() {
 
           {[
             { id: '市場管理', label: '市場管理 (古物競売)', icon: Gavel },
-            { id: 'スタッフ別集計', label: 'スタッフ別集計', icon: BarChart3 },
+            { id: '収支・日別分析', label: '収支・日別分析', icon: BarChart3 },
             { id: '媒体別分析', label: '媒体別分析 (チラシ・HP)', icon: Layers },
             { id: '繰越管理', label: '繰越・月次引継', icon: Calendar },
           ].map(t => {

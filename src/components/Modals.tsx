@@ -2,17 +2,18 @@ import React, { useState, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import {
   Plus, X, Coins, FileSpreadsheet, Copy, Check, ExternalLink,
-  Download, Upload, RotateCcw, ArrowRight, Sparkles, Trash2, ShoppingBag
+  Download, Upload, RotateCcw, ArrowRight, Sparkles, Trash2, ShoppingBag,
+  Calendar, Gavel, ArrowDownToLine
 } from 'lucide-react';
 import {
   DealRecord, MarketItem, GoldPreset, GoldBasketItem,
-  STAFF_LIST, MEDIA_LIST, STATUS_LIST, formatCurrency
+  STAFF_LIST, MEDIA_LIST, STATUS_LIST, CATEGORY_PRESETS, formatCurrency
 } from '../data';
 
 export const exportToExcel = (records: DealRecord[], marketItems: MarketItem[], monthName = '2026-09') => {
   const wb = XLSX.utils.book_new();
   const rows: any[][] = [
-    ['出張買取 売上管理表', '', '', '', '', '', '', '', '', '', '', '', ''],
+    ['松浦 出張買取 売上管理表', '', '', '', '', '', '', '', '', '', '', '', ''],
     ['対象年月:', monthName, '', '作成日:', new Date().toLocaleDateString('ja-JP')],
     [],
     ['日付', '担当者', 'お客様名/案件', '訪問地域', '品目分類', '買取金額(仕入)', '集客媒体', '翌月繰越(未売却)', '市場売上', '金売上(即換金)', 'Y売上(EC)', '回収・不用品売上', '仮金粗利', '仮Y粗利', '交通費', '処分費', '状態', '備考・メモ']
@@ -79,17 +80,28 @@ export const copyRecordsAsTSV = async (records: DealRecord[]): Promise<boolean> 
   }
 };
 
+export interface AddDealOptions {
+  sendToMarket?: boolean;
+  targetMarketName?: string;
+  estimatedMarketPrice?: number;
+}
+
 export const AddDealModal: React.FC<{
   isOpen: boolean;
   onClose: () => void;
-  onAdd: (r: DealRecord) => void;
+  onAdd: (r: DealRecord, options?: AddDealOptions) => void;
   preset: GoldPreset | null;
   currentMonth: string;
 }> = ({ isOpen, onClose, onAdd, preset, currentMonth }) => {
+  const getFormattedMD = (offsetDays = 0) => {
+    const d = new Date();
+    d.setDate(d.getDate() + offsetDays);
+    return `${d.getMonth() + 1}/${d.getDate()}`;
+  };
+
   const monthPrefix = currentMonth.split('/')[1] || String(new Date().getMonth() + 1);
   const todayStr = `${monthPrefix}/${new Date().getDate()}`;
   const [date, setDate] = useState(todayStr);
-  const [staff, setStaff] = useState<string>(STAFF_LIST[0]);
   const [customerName, setCustomerName] = useState('');
   const [area, setArea] = useState('');
   const [category, setCategory] = useState('');
@@ -104,15 +116,25 @@ export const AddDealModal: React.FC<{
   const [disposalCost, setDisposalCost] = useState(0);
   const [memo, setMemo] = useState('');
   const [status, setStatus] = useState('完結');
+  const [sendToMarket, setSendToMarket] = useState(false);
+  const [targetMarketName, setTargetMarketName] = useState('関東道具市場');
+  const [estimatedMarketPrice, setEstimatedMarketPrice] = useState(0);
 
   useEffect(() => {
-    setDate(`${currentMonth.split('/')[1] || '9'}/${new Date().getDate()}`);
+    const now = new Date();
+    const curMonthNum = currentMonth.split('/')[1];
+    if (curMonthNum && Number(curMonthNum) === now.getMonth() + 1) {
+      setDate(`${now.getMonth() + 1}/${now.getDate()}`);
+    } else {
+      setDate(`${currentMonth.split('/')[1] || '9'}/${now.getDate()}`);
+    }
     if (preset) {
       setPurchaseAmount(preset.purchaseAmount);
       setGoldSales(preset.goldSales);
       setCategory(preset.category);
       setMemo(preset.memo);
       setStatus('完結');
+      setSendToMarket(false);
     } else if (isOpen) {
       setPurchaseAmount(0);
       setGoldSales(0);
@@ -123,8 +145,12 @@ export const AddDealModal: React.FC<{
       setTransportCost(0);
       setDisposalCost(0);
       setCategory('');
+      setArea('');
       setMemo('');
       setStatus('完結');
+      setSendToMarket(false);
+      setTargetMarketName('関東道具市場');
+      setEstimatedMarketPrice(0);
     }
   }, [preset, isOpen, currentMonth]);
 
@@ -135,20 +161,37 @@ export const AddDealModal: React.FC<{
   const totalSales = goldSales + marketSales + yahooSales + recoverySales;
   const totalGross = totalSales - purchaseAmount;
 
+  const handleCategoryPresetClick = (tag: string) => {
+    if (!category.trim()) {
+      setCategory(tag);
+      return;
+    }
+    const existing = category.split('、').map(s => s.trim()).filter(Boolean);
+    if (!existing.includes(tag)) {
+      setCategory([...existing, tag].join('、'));
+    }
+  };
+
+  const handleSetFullCarryover = () => {
+    const val = Number(purchaseAmount) || 0;
+    setCarryover(val);
+    setStatus('全量繰越(未売却)');
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 overflow-y-auto">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden border border-gray-200">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden border border-gray-200 my-auto">
         <div className="flex items-center justify-between px-6 py-4 bg-emerald-700 text-white">
           <div className="flex items-center gap-2 flex-wrap">
             <Plus className="w-5 h-5" />
-            <h2 className="font-bold text-base">新規買取案件の登録（{currentMonth} 台帳）</h2>
+            <h2 className="font-bold text-base">新規買取案件の登録（松浦専用 {currentMonth} 台帳）</h2>
             {preset && (
               <span className="ml-1 px-2 py-0.5 text-[11px] bg-amber-400 text-amber-950 rounded-full font-bold flex items-center gap-1">
                 <Sparkles className="w-3 h-3" /> 金相場計算から自動反映済
               </span>
             )}
           </div>
-          <button onClick={onClose} className="p-1 hover:bg-emerald-800 rounded-full transition-colors">
+          <button onClick={onClose} className="p-1 hover:bg-emerald-800 rounded-full transition-colors cursor-pointer">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -156,68 +199,109 @@ export const AddDealModal: React.FC<{
         <form
           onSubmit={e => {
             e.preventDefault();
-            onAdd({
-              id: `rec-${Date.now()}`,
-              month: currentMonth,
-              date,
-              staff,
-              customerName: customerName.trim() || '新規お客様',
-              area,
-              category,
-              purchaseAmount: Number(purchaseAmount) || 0,
-              media,
-              carryover: Number(carryover) || 0,
-              marketSales: Number(marketSales) || 0,
-              goldSales: Number(goldSales) || 0,
-              yahooSales: Number(yahooSales) || 0,
-              recoverySales: Number(recoverySales) || 0,
-              estimatedGoldGrossProfit: estGoldProfit,
-              estimatedYahooGrossProfit: estYahooProfit,
-              transportCost: Number(transportCost) || 0,
-              disposalCost: Number(disposalCost) || 0,
-              memo,
-              status,
-            });
+            onAdd(
+              {
+                id: `rec-${Date.now()}`,
+                month: currentMonth,
+                date,
+                staff: STAFF_LIST[0],
+                customerName: customerName.trim() || '新規お客様',
+                area: area.trim(),
+                category: category.trim(),
+                purchaseAmount: Number(purchaseAmount) || 0,
+                media,
+                carryover: Number(carryover) || 0,
+                marketSales: Number(marketSales) || 0,
+                goldSales: Number(goldSales) || 0,
+                yahooSales: Number(yahooSales) || 0,
+                recoverySales: Number(recoverySales) || 0,
+                estimatedGoldGrossProfit: estGoldProfit,
+                estimatedYahooGrossProfit: estYahooProfit,
+                transportCost: Number(transportCost) || 0,
+                disposalCost: Number(disposalCost) || 0,
+                memo: memo.trim(),
+                status: sendToMarket ? '市場出品中' : status,
+              },
+              {
+                sendToMarket,
+                targetMarketName,
+                estimatedMarketPrice,
+              }
+            );
             setCustomerName('');
             onClose();
           }}
-          className="p-6 space-y-4 text-xs text-gray-700"
+          className="p-6 space-y-4 text-xs text-gray-700 max-h-[85vh] overflow-y-auto"
         >
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block font-semibold mb-1 text-gray-800">訪問日付</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="font-semibold text-gray-800">訪問日付</label>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setDate(getFormattedMD(0))}
+                    className="px-1.5 py-0.5 text-[10px] bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded font-semibold cursor-pointer"
+                  >
+                    今日
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDate(getFormattedMD(-1))}
+                    className="px-1.5 py-0.5 text-[10px] bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-200 rounded font-semibold cursor-pointer"
+                  >
+                    昨日
+                  </button>
+                  <label
+                    className="px-1.5 py-0.5 text-[10px] bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded font-semibold cursor-pointer flex items-center gap-0.5 relative overflow-hidden"
+                    title="カレンダーから日付選択"
+                  >
+                    <Calendar className="w-3 h-3" />
+                    <span>選択</span>
+                    <input
+                      type="date"
+                      onChange={e => {
+                        if (e.target.value) {
+                          const [, m, d] = e.target.value.split('-');
+                          setDate(`${Number(m)}/${Number(d)}`);
+                        }
+                      }}
+                      className="absolute inset-0 opacity-0 cursor-pointer"
+                    />
+                  </label>
+                </div>
+              </div>
               <input
                 type="text"
                 value={date}
                 onChange={e => setDate(e.target.value)}
                 placeholder="例: 9/23"
                 required
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-emerald-500 outline-none"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-emerald-500 outline-none font-mono font-semibold"
               />
             </div>
             <div>
-              <label className="block font-semibold mb-1 text-gray-800">担当査定員</label>
-              <select
-                value={staff}
-                onChange={e => setStaff(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-emerald-500 outline-none bg-white font-medium"
-              >
-                {STAFF_LIST.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </div>
-            <div>
               <label className="block font-semibold mb-1 text-gray-800">集客媒体</label>
-              <select
-                value={media}
-                onChange={e => setMedia(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-emerald-500 outline-none bg-white"
-              >
-                {MEDIA_LIST.map(m => <option key={m} value={m}>{m}</option>)}
-              </select>
+              <div className="grid grid-cols-5 gap-1">
+                {MEDIA_LIST.map(m => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setMedia(m)}
+                    className={`py-2 px-1 rounded-lg border text-[11px] font-semibold transition-all cursor-pointer truncate ${
+                      media === m
+                        ? 'bg-emerald-600 text-white border-emerald-700 shadow-2xs'
+                        : 'bg-white hover:bg-gray-50 text-gray-700 border-gray-300'
+                    }`}
+                  >
+                    {m === '看板/その他' ? 'その他' : m}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block font-semibold mb-1 text-gray-800">お客様名</label>
               <input
@@ -226,6 +310,7 @@ export const AddDealModal: React.FC<{
                 onChange={e => setCustomerName(e.target.value)}
                 placeholder="例: 佐藤様"
                 required
+                autoFocus
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-emerald-500 outline-none"
               />
             </div>
@@ -239,15 +324,41 @@ export const AddDealModal: React.FC<{
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-emerald-500 outline-none"
               />
             </div>
-            <div>
-              <label className="block font-semibold mb-1 text-gray-800">品目カテゴリ</label>
-              <input
-                type="text"
-                value={category}
-                onChange={e => setCategory(e.target.value)}
-                placeholder="例: K18リング、古銭、切手"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-emerald-500 outline-none"
-              />
+          </div>
+
+          <div>
+            <label className="block font-semibold mb-1 text-gray-800">品目カテゴリ（下のタグをクリックして簡単入力）</label>
+            <input
+              type="text"
+              value={category}
+              onChange={e => setCategory(e.target.value)}
+              placeholder="例: 貴金属・金、古銭・切手（自由入力または下から選択）"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-emerald-500 outline-none"
+            />
+            <div className="flex flex-wrap gap-1.5 mt-1.5">
+              {CATEGORY_PRESETS.map(tag => (
+                <button
+                  key={tag}
+                  type="button"
+                  onClick={() => handleCategoryPresetClick(tag)}
+                  className={`px-2 py-1 rounded-md text-[11px] font-medium border transition-colors cursor-pointer ${
+                    category.includes(tag)
+                      ? 'bg-emerald-100 text-emerald-900 border-emerald-400 font-bold'
+                      : 'bg-gray-50 hover:bg-emerald-50 text-gray-700 border-gray-200'
+                  }`}
+                >
+                  ＋ {tag}
+                </button>
+              ))}
+              {category && (
+                <button
+                  type="button"
+                  onClick={() => setCategory('')}
+                  className="px-2 py-1 rounded-md text-[10px] text-gray-400 hover:text-rose-600 cursor-pointer"
+                >
+                  クリア
+                </button>
+              )}
             </div>
           </div>
 
@@ -261,6 +372,7 @@ export const AddDealModal: React.FC<{
                 <input
                   type="number"
                   value={purchaseAmount}
+                  onFocus={e => e.target.select()}
                   onChange={e => setPurchaseAmount(Number(e.target.value))}
                   required
                   min="0"
@@ -270,12 +382,24 @@ export const AddDealModal: React.FC<{
               <p className="text-[10px] text-emerald-800 mt-1">※ お客様にお支払いした現金（0円引取の場合は0）</p>
             </div>
             <div>
-              <label className="block font-bold mb-1 text-purple-900 text-xs">翌月繰越額（まだ売却していない在庫評価）</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="font-bold text-purple-900 text-xs">翌月繰越額（未売却在庫）</label>
+                <button
+                  type="button"
+                  onClick={handleSetFullCarryover}
+                  className="flex items-center gap-0.5 px-2 py-0.5 bg-purple-600 hover:bg-purple-700 text-white rounded text-[10px] font-bold shadow-2xs cursor-pointer"
+                  title="買取金額を全額翌月繰越へセットし、ステータスを未売却にする"
+                >
+                  <ArrowDownToLine className="w-3 h-3" />
+                  <span>未売却(全額繰越)</span>
+                </button>
+              </div>
               <div className="relative">
                 <span className="absolute left-3 top-2 text-gray-500">¥</span>
                 <input
                   type="number"
                   value={carryover}
+                  onFocus={e => e.target.select()}
                   onChange={e => {
                     const val = Number(e.target.value);
                     setCarryover(val);
@@ -286,7 +410,7 @@ export const AddDealModal: React.FC<{
                   className="w-full pl-7 pr-3 py-1.5 border border-purple-300 rounded-md bg-white font-mono font-bold text-sm focus:border-purple-600 outline-none"
                 />
               </div>
-              <p className="text-[10px] text-purple-700 mt-1">※ 次回市場・オークション出品予定の在庫プール</p>
+              <p className="text-[10px] text-purple-700 mt-1">※ 次回市場・オークション出品予定の在庫評価</p>
             </div>
           </div>
 
@@ -295,7 +419,7 @@ export const AddDealModal: React.FC<{
               <span className="font-bold text-amber-950 flex items-center gap-1.5">
                 <Coins className="w-4 h-4 text-amber-600" /> 販路別売上（即時換金・市場・EC・回収）
               </span>
-              <span className="font-mono text-xs font-bold text-emerald-800">
+              <span className={`font-mono text-xs font-bold ${totalGross >= 0 ? 'text-emerald-800' : 'text-rose-700'}`}>
                 見込粗利: ¥{formatCurrency(totalGross)}
               </span>
             </div>
@@ -305,6 +429,7 @@ export const AddDealModal: React.FC<{
                 <input
                   type="number"
                   value={goldSales}
+                  onFocus={e => e.target.select()}
                   onChange={e => setGoldSales(Number(e.target.value))}
                   className="w-full px-2 py-1.5 border border-amber-300 rounded bg-white font-mono text-xs focus:border-amber-600 outline-none"
                 />
@@ -314,6 +439,7 @@ export const AddDealModal: React.FC<{
                 <input
                   type="number"
                   value={marketSales}
+                  onFocus={e => e.target.select()}
                   onChange={e => setMarketSales(Number(e.target.value))}
                   className="w-full px-2 py-1.5 border border-emerald-300 rounded bg-white font-mono text-xs focus:border-emerald-600 outline-none"
                 />
@@ -323,6 +449,7 @@ export const AddDealModal: React.FC<{
                 <input
                   type="number"
                   value={yahooSales}
+                  onFocus={e => e.target.select()}
                   onChange={e => setYahooSales(Number(e.target.value))}
                   className="w-full px-2 py-1.5 border border-gray-300 rounded bg-white font-mono text-xs focus:border-gray-600 outline-none"
                 />
@@ -332,6 +459,7 @@ export const AddDealModal: React.FC<{
                 <input
                   type="number"
                   value={recoverySales}
+                  onFocus={e => e.target.select()}
                   onChange={e => setRecoverySales(Number(e.target.value))}
                   className="w-full px-2 py-1.5 border border-gray-300 rounded bg-white font-mono text-xs focus:border-gray-600 outline-none"
                 />
@@ -345,6 +473,7 @@ export const AddDealModal: React.FC<{
               <input
                 type="number"
                 value={transportCost}
+                onFocus={e => e.target.select()}
                 onChange={e => setTransportCost(Number(e.target.value))}
                 className="w-full px-3 py-1.5 border border-gray-300 rounded-md font-mono outline-none"
               />
@@ -354,6 +483,7 @@ export const AddDealModal: React.FC<{
               <input
                 type="number"
                 value={disposalCost}
+                onFocus={e => e.target.select()}
                 onChange={e => setDisposalCost(Number(e.target.value))}
                 className="w-full px-3 py-1.5 border border-gray-300 rounded-md font-mono outline-none"
               />
@@ -361,9 +491,10 @@ export const AddDealModal: React.FC<{
             <div>
               <label className="block font-semibold mb-1 text-gray-800">案件ステータス</label>
               <select
-                value={status}
+                value={sendToMarket ? '市場出品中' : status}
                 onChange={e => setStatus(e.target.value)}
-                className="w-full px-3 py-1.5 border border-gray-300 rounded-md bg-white font-medium outline-none"
+                disabled={sendToMarket}
+                className="w-full px-3 py-1.5 border border-gray-300 rounded-md bg-white font-medium outline-none disabled:bg-gray-100"
               >
                 {STATUS_LIST.map(st => <option key={st} value={st}>{st}</option>)}
               </select>
@@ -381,11 +512,54 @@ export const AddDealModal: React.FC<{
             />
           </div>
 
+          {/* 同時に古物市場出品リスト登録オプション */}
+          <div className="bg-blue-50/70 border border-blue-200 rounded-lg p-3 space-y-2">
+            <label className="flex items-center gap-2 font-bold text-blue-950 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={sendToMarket}
+                onChange={e => {
+                  setSendToMarket(e.target.checked);
+                  if (e.target.checked && estimatedMarketPrice === 0 && purchaseAmount > 0) {
+                    setEstimatedMarketPrice(Math.round(purchaseAmount * 1.5));
+                  }
+                }}
+                className="w-4 h-4 accent-blue-600 rounded cursor-pointer"
+              />
+              <Gavel className="w-4 h-4 text-blue-600" />
+              <span>同時に「市場管理（古物競売）」の出品リストにも登録する</span>
+            </label>
+            {sendToMarket && (
+              <div className="grid grid-cols-2 gap-3 pt-1 pl-6">
+                <div>
+                  <label className="block text-[11px] font-semibold text-blue-900 mb-0.5">出品予定市場名</label>
+                  <input
+                    type="text"
+                    value={targetMarketName}
+                    onChange={e => setTargetMarketName(e.target.value)}
+                    placeholder="例: 関東道具市場"
+                    className="w-full px-2.5 py-1 bg-white border border-blue-300 rounded text-xs outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-blue-900 mb-0.5">市場予想落札額 (見込)</label>
+                  <input
+                    type="number"
+                    value={estimatedMarketPrice}
+                    onFocus={e => e.target.select()}
+                    onChange={e => setEstimatedMarketPrice(Number(e.target.value))}
+                    className="w-full px-2.5 py-1 bg-white border border-blue-300 rounded font-mono text-xs outline-none"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
           <div className="flex justify-end gap-2 pt-3 border-t border-gray-200">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium transition-colors"
+              className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium transition-colors cursor-pointer"
             >
               キャンセル
             </button>
@@ -393,7 +567,7 @@ export const AddDealModal: React.FC<{
               type="submit"
               className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold shadow-md transition-all cursor-pointer"
             >
-              スプレッドシートに追加
+              売上表に登録する
             </button>
           </div>
         </form>
@@ -556,6 +730,7 @@ export const GoldCalcModal: React.FC<{
                 <input
                   type="number"
                   value={info.basePrice}
+                  onFocus={e => e.target.select()}
                   onChange={e => info.setBase(Number(e.target.value))}
                   className="w-full pl-6 pr-2 py-1 bg-white border border-gray-300 rounded font-mono font-bold text-xs"
                 />
@@ -571,6 +746,7 @@ export const GoldCalcModal: React.FC<{
                   type="number"
                   step="0.1"
                   value={weight}
+                  onFocus={e => e.target.select()}
                   onChange={e => setWeight(Number(e.target.value))}
                   onKeyDown={e => {
                     if (e.key === 'Enter') {

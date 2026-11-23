@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import {
   Gavel, TrendingUp, CheckCircle2, Plus, Building2, Trash2,
-  BarChart3, Coins, Trophy, Users, Megaphone, Target, ArrowUpRight
+  BarChart3, Coins, Trophy, Megaphone, Target, ArrowUpRight, Wallet, Receipt, Calendar
 } from 'lucide-react';
 import {
   DealRecord, MarketItem, AdCosts, STAFF_LIST, MEDIA_LIST, MARKET_STATUS_LIST,
@@ -114,7 +114,7 @@ export const MarketView: React.FC<{
         <div className="flex flex-wrap items-center justify-between px-4 py-2.5 bg-gray-50 border-b border-gray-200 gap-2">
           <div className="flex items-center gap-2">
             <Gavel className="w-4 h-4 text-emerald-700" />
-            <h2 className="font-bold text-sm text-gray-800">古物市場・ブランドオークション出品管理台帳（ダブルクリックで落札額・状態編集可）</h2>
+            <h2 className="font-bold text-sm text-gray-800">古物市場・ブランドオークション出品管理台帳（クリックで落札額・状態編集可）</h2>
           </div>
           <button
             onClick={() => setShowAdd(true)}
@@ -132,7 +132,6 @@ export const MarketView: React.FC<{
                 <th className="py-2 px-2 border-r border-gray-300 w-10">No</th>
                 <th className="py-2 px-2 border-r border-gray-300 w-24">仕入日</th>
                 <th className="py-2 px-2 border-r border-gray-300 text-left min-w-48">品名・詳細</th>
-                <th className="py-2 px-2 border-r border-gray-300 w-16">担当</th>
                 <th className="py-2 px-2 border-r border-gray-300 text-right w-24">買取額(原価)</th>
                 <th className="py-2 px-2 border-r border-gray-300 text-right w-24">予想落札額</th>
                 <th className="py-2 px-2 border-r border-gray-300 text-left min-w-36">出品先市場名</th>
@@ -142,14 +141,14 @@ export const MarketView: React.FC<{
                 <th className="py-2 px-2 border-r border-gray-300 text-right w-24">確定粗利</th>
                 <th className="py-2 px-2 border-r border-gray-300 w-28">状態</th>
                 <th className="py-2 px-2 border-r border-gray-300 text-left min-w-36">備考</th>
-                <th className="py-2 px-2 w-20">操作</th>
+                <th className="py-2 px-2 w-32">操作</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200 font-mono">
               {items.length === 0 ? (
                 <tr>
-                  <td colSpan={14} className="py-8 text-center text-gray-400 font-sans">
-                    市場出品アイテムはまだ登録されていません。「市場出品アイテムを追加」から登録してください。
+                  <td colSpan={13} className="py-8 text-center text-gray-400 font-sans">
+                    市場出品アイテムはまだ登録されていません。「市場出品アイテムを追加」または売上明細シートの「市場へ出品」ボタンから登録できます。
                   </td>
                 </tr>
               ) : (
@@ -161,15 +160,32 @@ export const MarketView: React.FC<{
                   return (
                     <tr key={item.id} className="hover:bg-blue-50/40 transition-colors">
                       <td className="py-1.5 px-2 text-center bg-gray-50 border-r border-gray-200 text-gray-500 text-[11px]">{idx + 1}</td>
-                      <td className="py-1.5 px-2 text-center border-r border-gray-200 font-sans">{item.purchaseDate}</td>
                       <td
-                        onDoubleClick={() => startEdit(item, 'itemDescription')}
-                        className="py-1.5 px-2 border-r border-gray-200 font-sans font-medium text-gray-900 cursor-pointer"
+                        onClick={() => startEdit(item, 'purchaseDate')}
+                        className="py-1.5 px-2 text-center border-r border-gray-200 font-sans cursor-pointer hover:bg-gray-50"
+                      >
+                        {editingCell?.id === item.id && editingCell.field === 'purchaseDate' ? (
+                          <input
+                            type="text"
+                            value={editVal}
+                            onFocus={e => e.target.select()}
+                            onChange={e => setEditVal(e.target.value)}
+                            onBlur={() => commitEdit(item)}
+                            onKeyDown={e => e.key === 'Enter' && commitEdit(item)}
+                            autoFocus
+                            className="w-full px-1 py-0.5 border border-emerald-500 rounded bg-white text-center text-xs outline-none"
+                          />
+                        ) : item.purchaseDate}
+                      </td>
+                      <td
+                        onClick={() => startEdit(item, 'itemDescription')}
+                        className="py-1.5 px-2 border-r border-gray-200 font-sans font-medium text-gray-900 cursor-pointer hover:bg-gray-50"
                       >
                         {editingCell?.id === item.id && editingCell.field === 'itemDescription' ? (
                           <input
                             type="text"
                             value={editVal}
+                            onFocus={e => e.target.select()}
                             onChange={e => setEditVal(e.target.value)}
                             onBlur={() => commitEdit(item)}
                             onKeyDown={e => e.key === 'Enter' && commitEdit(item)}
@@ -178,23 +194,15 @@ export const MarketView: React.FC<{
                           />
                         ) : item.itemDescription}
                       </td>
-                      <td className="py-1.5 px-2 text-center border-r border-gray-200 font-sans">
-                        <select
-                          value={item.staff}
-                          onChange={e => onUpdateItem({ ...item, staff: e.target.value })}
-                          className="px-1.5 py-0.5 rounded bg-gray-100 font-bold text-gray-700 text-[11px] outline-none cursor-pointer"
-                        >
-                          {STAFF_LIST.map(s => <option key={s} value={s}>{s}</option>)}
-                        </select>
-                      </td>
                       <td
-                        onDoubleClick={() => startEdit(item, 'purchaseCost')}
-                        className="py-1.5 px-2 text-right border-r border-gray-200 text-rose-700 font-semibold cursor-pointer"
+                        onClick={() => startEdit(item, 'purchaseCost')}
+                        className="py-1.5 px-2 text-right border-r border-gray-200 text-rose-700 font-semibold cursor-pointer hover:bg-rose-50/40"
                       >
                         {editingCell?.id === item.id && editingCell.field === 'purchaseCost' ? (
                           <input
                             type="number"
                             value={editVal}
+                            onFocus={e => e.target.select()}
                             onChange={e => setEditVal(e.target.value)}
                             onBlur={() => commitEdit(item)}
                             onKeyDown={e => e.key === 'Enter' && commitEdit(item)}
@@ -204,13 +212,14 @@ export const MarketView: React.FC<{
                         ) : `¥${formatCurrency(item.purchaseCost)}`}
                       </td>
                       <td
-                        onDoubleClick={() => startEdit(item, 'estimatedMarketPrice')}
-                        className="py-1.5 px-2 text-right border-r border-gray-200 text-blue-700 font-semibold cursor-pointer"
+                        onClick={() => startEdit(item, 'estimatedMarketPrice')}
+                        className="py-1.5 px-2 text-right border-r border-gray-200 text-blue-700 font-semibold cursor-pointer hover:bg-blue-50/40"
                       >
                         {editingCell?.id === item.id && editingCell.field === 'estimatedMarketPrice' ? (
                           <input
                             type="number"
                             value={editVal}
+                            onFocus={e => e.target.select()}
                             onChange={e => setEditVal(e.target.value)}
                             onBlur={() => commitEdit(item)}
                             onKeyDown={e => e.key === 'Enter' && commitEdit(item)}
@@ -220,15 +229,44 @@ export const MarketView: React.FC<{
                         ) : `¥${formatCurrency(item.estimatedMarketPrice)}`}
                       </td>
                       <td
-                        onDoubleClick={() => startEdit(item, 'targetMarketName')}
-                        className="py-1.5 px-2 border-r border-gray-200 font-sans text-gray-700 cursor-pointer"
+                        onClick={() => startEdit(item, 'targetMarketName')}
+                        className="py-1.5 px-2 border-r border-gray-200 font-sans text-gray-700 cursor-pointer hover:bg-gray-50"
                       >
-                        <div className="flex items-center gap-1">
-                          <Building2 className="w-3 h-3 text-gray-400 shrink-0" />
-                          <span>{item.targetMarketName}</span>
-                        </div>
+                        {editingCell?.id === item.id && editingCell.field === 'targetMarketName' ? (
+                          <input
+                            type="text"
+                            value={editVal}
+                            onFocus={e => e.target.select()}
+                            onChange={e => setEditVal(e.target.value)}
+                            onBlur={() => commitEdit(item)}
+                            onKeyDown={e => e.key === 'Enter' && commitEdit(item)}
+                            autoFocus
+                            className="w-full px-1 py-0.5 border border-emerald-500 rounded bg-white text-xs outline-none"
+                          />
+                        ) : (
+                          <div className="flex items-center gap-1">
+                            <Building2 className="w-3 h-3 text-gray-400 shrink-0" />
+                            <span>{item.targetMarketName}</span>
+                          </div>
+                        )}
                       </td>
-                      <td className="py-1.5 px-2 text-center border-r border-gray-200 font-sans text-gray-600">{item.auctionDate}</td>
+                      <td
+                        onClick={() => startEdit(item, 'auctionDate')}
+                        className="py-1.5 px-2 text-center border-r border-gray-200 font-sans text-gray-600 cursor-pointer hover:bg-gray-50"
+                      >
+                        {editingCell?.id === item.id && editingCell.field === 'auctionDate' ? (
+                          <input
+                            type="text"
+                            value={editVal}
+                            onFocus={e => e.target.select()}
+                            onChange={e => setEditVal(e.target.value)}
+                            onBlur={() => commitEdit(item)}
+                            onKeyDown={e => e.key === 'Enter' && commitEdit(item)}
+                            autoFocus
+                            className="w-full px-1 py-0.5 border border-emerald-500 rounded bg-white text-center text-xs outline-none"
+                          />
+                        ) : item.auctionDate}
+                      </td>
                       <td
                         onClick={() => startEdit(item, 'actualSoldPrice')}
                         className="py-1.5 px-2 text-right border-r border-gray-200 bg-emerald-50/50 font-bold text-emerald-800 cursor-pointer hover:bg-emerald-100/60"
@@ -238,6 +276,7 @@ export const MarketView: React.FC<{
                           <input
                             type="number"
                             value={editVal}
+                            onFocus={e => e.target.select()}
                             onChange={e => setEditVal(e.target.value)}
                             onBlur={() => commitEdit(item)}
                             onKeyDown={e => e.key === 'Enter' && commitEdit(item)}
@@ -254,10 +293,21 @@ export const MarketView: React.FC<{
                         )}
                       </td>
                       <td
-                        onDoubleClick={() => startEdit(item, 'commissionRate')}
-                        className="py-1.5 px-2 text-right border-r border-gray-200 text-gray-600 cursor-pointer"
+                        onClick={() => startEdit(item, 'commissionRate')}
+                        className="py-1.5 px-2 text-right border-r border-gray-200 text-gray-600 cursor-pointer hover:bg-gray-50"
                       >
-                        {item.commissionRate}%
+                        {editingCell?.id === item.id && editingCell.field === 'commissionRate' ? (
+                          <input
+                            type="number"
+                            value={editVal}
+                            onFocus={e => e.target.select()}
+                            onChange={e => setEditVal(e.target.value)}
+                            onBlur={() => commitEdit(item)}
+                            onKeyDown={e => e.key === 'Enter' && commitEdit(item)}
+                            autoFocus
+                            className="w-full px-1 py-0.5 border border-emerald-500 rounded bg-white text-right text-xs outline-none"
+                          />
+                        ) : `${item.commissionRate}%`}
                       </td>
                       <td className="py-1.5 px-2 text-right border-r border-gray-200 font-bold">
                         {netProfit === null ? (
@@ -286,13 +336,14 @@ export const MarketView: React.FC<{
                         </select>
                       </td>
                       <td
-                        onDoubleClick={() => startEdit(item, 'notes')}
-                        className="py-1.5 px-2 border-r border-gray-200 font-sans text-gray-500 text-[11px] cursor-pointer"
+                        onClick={() => startEdit(item, 'notes')}
+                        className="py-1.5 px-2 border-r border-gray-200 font-sans text-gray-500 text-[11px] cursor-pointer hover:bg-gray-50"
                       >
                         {editingCell?.id === item.id && editingCell.field === 'notes' ? (
                           <input
                             type="text"
                             value={editVal}
+                            onFocus={e => e.target.select()}
                             onChange={e => setEditVal(e.target.value)}
                             onBlur={() => commitEdit(item)}
                             onKeyDown={e => e.key === 'Enter' && commitEdit(item)}
@@ -301,15 +352,16 @@ export const MarketView: React.FC<{
                           />
                         ) : (item.notes || '-')}
                       </td>
-                      <td className="py-1.5 px-2 text-center">
+                      <td className="py-1.5 px-2 text-center font-sans">
                         <div className="flex items-center justify-center gap-1">
                           {item.actualSoldPrice !== null && onSyncToLedger && (
                             <button
                               onClick={() => onSyncToLedger(item)}
-                              className="p-1 text-emerald-600 hover:bg-emerald-50 rounded cursor-pointer"
+                              className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[10px] font-bold flex items-center gap-0.5 shadow-2xs cursor-pointer"
                               title="当月台帳の市場売上に反映"
                             >
-                              <ArrowUpRight className="w-3.5 h-3.5" />
+                              <ArrowUpRight className="w-3 h-3" />
+                              <span>台帳に反映</span>
                             </button>
                           )}
                           <button
@@ -335,7 +387,7 @@ export const MarketView: React.FC<{
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg p-6 space-y-4">
             <h3 className="font-bold text-base text-gray-900 flex items-center gap-2">
               <Gavel className="w-5 h-5 text-emerald-600" />
-              市場出品アイテムの登録
+              市場出品アイテムの登録（松浦専用）
             </h3>
             <form
               onSubmit={e => {
@@ -345,7 +397,7 @@ export const MarketView: React.FC<{
                   id: `mkt-${Date.now()}`,
                   purchaseDate: form.purchaseDate,
                   itemDescription: form.itemDescription,
-                  staff: form.staff,
+                  staff: STAFF_LIST[0],
                   purchaseCost: Number(form.purchaseCost) || 0,
                   estimatedMarketPrice: Number(form.estimatedMarketPrice) || 0,
                   targetMarketName: form.targetMarketName,
@@ -379,19 +431,19 @@ export const MarketView: React.FC<{
                   onChange={e => setForm({ ...form, itemDescription: e.target.value })}
                   placeholder="例: 古九谷色絵大皿・共箱付き"
                   required
+                  autoFocus
                   className="w-full px-3 py-1.5 border border-gray-300 rounded focus:border-emerald-500 outline-none"
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-semibold mb-1 text-gray-700">担当査定員</label>
-                  <select
-                    value={form.staff}
-                    onChange={e => setForm({ ...form, staff: e.target.value })}
+                  <label className="block font-semibold mb-1 text-gray-700">仕入日</label>
+                  <input
+                    type="text"
+                    value={form.purchaseDate}
+                    onChange={e => setForm({ ...form, purchaseDate: e.target.value })}
                     className="w-full px-3 py-1.5 border border-gray-300 rounded outline-none"
-                  >
-                    {STAFF_LIST.map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
+                  />
                 </div>
                 <div>
                   <label className="block font-semibold mb-1 text-gray-700">出品先古物市場</label>
@@ -409,6 +461,7 @@ export const MarketView: React.FC<{
                   <input
                     type="number"
                     value={form.purchaseCost}
+                    onFocus={e => e.target.select()}
                     onChange={e => setForm({ ...form, purchaseCost: Number(e.target.value) })}
                     className="w-full px-3 py-1.5 border border-gray-300 rounded outline-none font-mono"
                   />
@@ -418,6 +471,7 @@ export const MarketView: React.FC<{
                   <input
                     type="number"
                     value={form.estimatedMarketPrice}
+                    onFocus={e => e.target.select()}
                     onChange={e => setForm({ ...form, estimatedMarketPrice: Number(e.target.value) })}
                     className="w-full px-3 py-1.5 border border-gray-300 rounded outline-none font-mono"
                   />
@@ -438,6 +492,7 @@ export const MarketView: React.FC<{
                   <input
                     type="number"
                     value={form.commissionRate}
+                    onFocus={e => e.target.select()}
                     onChange={e => setForm({ ...form, commissionRate: Number(e.target.value) })}
                     className="w-full px-3 py-1.5 border border-gray-300 rounded outline-none font-mono"
                   />
@@ -475,22 +530,13 @@ export const MarketView: React.FC<{
   );
 };
 
-export const DailyChart: React.FC<{ records: DealRecord[]; initialStaff?: string }> = ({
-  records,
-  initialStaff = '全員',
-}) => {
-  const [staffFilter, setStaffFilter] = useState(initialStaff);
+export const DailyChart: React.FC<{ records: DealRecord[] }> = ({ records }) => {
   const [mode, setMode] = useState<'comparison' | 'profitOnly'>('comparison');
   const [hoveredDay, setHoveredDay] = useState<any | null>(null);
 
-  const filtered = useMemo(
-    () => (staffFilter === '全員' ? records : records.filter(r => r.staff === staffFilter)),
-    [records, staffFilter]
-  );
-
   const dailyData = useMemo(() => {
     const map = new Map<string, DealRecord[]>();
-    filtered.forEach(r => {
+    records.forEach(r => {
       const list = map.get(r.date) || [];
       list.push(r);
       map.set(r.date, list);
@@ -500,7 +546,7 @@ export const DailyChart: React.FC<{ records: DealRecord[]; initialStaff?: string
       .sort((a, b) => {
         const [m1, d1] = a.split('/').map(Number);
         const [m2, d2] = b.split('/').map(Number);
-        return m1 === m2 ? d1 - d2 : m1 - m2;
+        return (m1 || 0) === (m2 || 0) ? (d1 || 0) - (d2 || 0) : (m1 || 0) - (m2 || 0);
       })
       .forEach(date => {
         const list = map.get(date) || [];
@@ -529,7 +575,7 @@ export const DailyChart: React.FC<{ records: DealRecord[]; initialStaff?: string
         });
       });
     return res;
-  }, [filtered]);
+  }, [records]);
 
   const totalSales = dailyData.reduce((s, d) => s + d.salesTotal, 0);
   const totalPurchase = dailyData.reduce((s, d) => s + d.purchaseTotal, 0);
@@ -554,7 +600,7 @@ export const DailyChart: React.FC<{ records: DealRecord[]; initialStaff?: string
           </div>
           <div>
             <h3 className="font-bold text-sm text-white flex items-center gap-2">
-              <span>日別 売上・仕入・粗利推移チャート</span>
+              <span>松浦 日別 売上・仕入・粗利推移チャート</span>
               <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-400/40 px-2 py-0.5 rounded-full font-mono">
                 粗利 = 売上合計 - 仕入合計
               </span>
@@ -565,20 +611,6 @@ export const DailyChart: React.FC<{ records: DealRecord[]; initialStaff?: string
           </div>
         </div>
         <div className="flex items-center gap-2.5 flex-wrap">
-          <div className="flex items-center bg-slate-800 border border-slate-700 rounded-lg p-0.5 text-xs">
-            <span className="px-2 text-slate-400 font-medium">対象:</span>
-            {['全員', ...STAFF_LIST].map(st => (
-              <button
-                key={st}
-                onClick={() => setStaffFilter(st)}
-                className={`px-2.5 py-1 rounded-md transition-all font-medium cursor-pointer ${
-                  staffFilter === st ? 'bg-emerald-600 text-white font-bold shadow-xs' : 'text-slate-300 hover:text-white'
-                }`}
-              >
-                {st}
-              </button>
-            ))}
-          </div>
           <div className="flex items-center bg-slate-800 border border-slate-700 rounded-lg p-0.5 text-xs">
             <button
               onClick={() => setMode('comparison')}
@@ -692,123 +724,198 @@ export const DailyChart: React.FC<{ records: DealRecord[]; initialStaff?: string
           )}
         </div>
       </div>
+
+      {/* 日別実績一覧テーブル */}
+      {dailyData.length > 0 && (
+        <div className="px-4 pb-4">
+          <div className="border border-gray-200 rounded-lg overflow-hidden">
+            <div className="px-3 py-2 bg-gray-100 border-b border-gray-200 font-bold text-xs text-gray-700 flex items-center gap-1.5">
+              <Calendar className="w-3.5 h-3.5 text-emerald-700" />
+              <span>日別 実績一覧表</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse font-mono">
+                <thead>
+                  <tr className="bg-gray-50 text-gray-600 border-b border-gray-200 text-center font-sans">
+                    <th className="py-2 px-3 border-r">日付</th>
+                    <th className="py-2 px-3 border-r">件数</th>
+                    <th className="py-2 px-3 border-r text-right">買取仕入</th>
+                    <th className="py-2 px-3 border-r text-right">金売上</th>
+                    <th className="py-2 px-3 border-r text-right">市場売上</th>
+                    <th className="py-2 px-3 border-r text-right">Y・回収他</th>
+                    <th className="py-2 px-3 border-r text-right font-bold">売上合計</th>
+                    <th className="py-2 px-3 border-r text-right font-bold">日別粗利</th>
+                    <th className="py-2 px-3 text-right">粗利率</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {dailyData.map(d => (
+                    <tr key={d.date} className="hover:bg-blue-50/30">
+                      <td className="py-1.5 px-3 text-center border-r font-sans font-bold text-gray-800">{d.date}</td>
+                      <td className="py-1.5 px-3 text-center border-r">{d.dealsCount}件</td>
+                      <td className="py-1.5 px-3 text-right border-r text-rose-700">¥{formatCurrency(d.purchaseTotal)}</td>
+                      <td className="py-1.5 px-3 text-right border-r text-amber-800">¥{formatCurrency(d.goldSales)}</td>
+                      <td className="py-1.5 px-3 text-right border-r text-emerald-800">¥{formatCurrency(d.marketSales)}</td>
+                      <td className="py-1.5 px-3 text-right border-r text-gray-700">¥{formatCurrency(d.yahooSales + d.recoverySales)}</td>
+                      <td className="py-1.5 px-3 text-right border-r font-bold text-blue-800">¥{formatCurrency(d.salesTotal)}</td>
+                      <td className={`py-1.5 px-3 text-right border-r font-bold ${d.grossProfit >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
+                        ¥{formatCurrency(d.grossProfit)}
+                      </td>
+                      <td className="py-1.5 px-3 text-right text-gray-600">
+                        {d.salesTotal > 0 ? `${d.profitMargin.toFixed(1)}%` : '-'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
-export const StaffAnalyticsView: React.FC<{
+export const PersonalAnalyticsView: React.FC<{
   records: DealRecord[];
   adCosts: AdCosts;
   onUpdateStaffAdCost: (staff: '松浦', val: number) => void;
 }> = ({ records, adCosts, onUpdateStaffAdCost }) => {
   const matsuura = calcStaffStats('松浦', records, adCosts.松浦);
-  const store = calcStaffStats('店', records, adCosts.松浦);
-  const staffList = [matsuura];
+  const marginPct = matsuura.salesTotal > 0 ? (matsuura.grossProfit / matsuura.salesTotal) * 100 : 0;
+
+  const channels = [
+    { label: '金・地金（即換金）', val: matsuura.goldSalesTotal, color: 'bg-amber-500', textColor: 'text-amber-800' },
+    { label: '古物市場（道具市・ブランド市）', val: matsuura.marketSalesTotal, color: 'bg-emerald-500', textColor: 'text-emerald-800' },
+    { label: 'ヤフオク・EC販売', val: matsuura.yahooSalesTotal, color: 'bg-blue-500', textColor: 'text-blue-800' },
+    { label: '回収・不用品・その他売上', val: matsuura.recoverySalesTotal, color: 'bg-slate-500', textColor: 'text-slate-800' },
+  ];
 
   return (
     <div className="flex-1 overflow-auto bg-gray-100 p-4 space-y-5 text-xs text-gray-800">
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         <div className="bg-white p-4 rounded-xl border border-gray-300 shadow-2xs">
           <div className="flex items-center justify-between text-gray-500 mb-1">
-            <span className="font-semibold text-xs">総売上高</span>
+            <span className="font-semibold text-xs">当月 総売上高</span>
             <TrendingUp className="w-4 h-4 text-emerald-600" />
           </div>
-          <div className="font-mono text-2xl font-bold text-gray-900">¥{formatCurrency(store.salesTotal)}</div>
+          <div className="font-mono text-2xl font-bold text-gray-900">¥{formatCurrency(matsuura.salesTotal)}</div>
           <div className="text-[11px] text-emerald-700 mt-1 font-medium">
-            全{store.purchaseCount}件 / 店舗客単価: ¥{formatCurrency(store.averageCustomerSpend)}
+            成約 {matsuura.purchaseCount}件 / 平均客単価: ¥{formatCurrency(matsuura.averageCustomerSpend)}
           </div>
         </div>
         <div className="bg-white p-4 rounded-xl border border-gray-300 shadow-2xs">
           <div className="flex items-center justify-between text-gray-500 mb-1">
-            <span className="font-semibold text-xs">総粗利益</span>
+            <span className="font-semibold text-xs">当月 総粗利益</span>
             <Coins className="w-4 h-4 text-amber-500" />
           </div>
-          <div className="font-mono text-2xl font-bold text-amber-600">¥{formatCurrency(store.grossProfit)}</div>
+          <div className="font-mono text-2xl font-bold text-amber-600">¥{formatCurrency(matsuura.grossProfit)}</div>
           <div className="text-[11px] text-gray-500 mt-1">
-            粗利率: {store.salesTotal > 0 ? formatPercent(store.grossProfit / store.salesTotal) : '0%'}
+            粗利率: {matsuura.salesTotal > 0 ? formatPercent(matsuura.grossProfit / matsuura.salesTotal) : '0.0%'}
           </div>
         </div>
         <div className="bg-white p-4 rounded-xl border border-gray-300 shadow-2xs">
           <div className="flex items-center justify-between text-gray-500 mb-1">
-            <span className="font-semibold text-xs">翌月繰越(未売却在庫)</span>
+            <span className="font-semibold text-xs">翌月繰越 (未売却在庫)</span>
             <span className="px-1.5 py-0.5 bg-purple-100 text-purple-800 text-[10px] rounded font-bold">STOCK</span>
           </div>
-          <div className="font-mono text-2xl font-bold text-purple-700">¥{formatCurrency(store.carryoverTotal)}</div>
+          <div className="font-mono text-2xl font-bold text-purple-700">¥{formatCurrency(matsuura.carryoverTotal)}</div>
           <div className="text-[11px] text-gray-500 mt-1">次回市場・EC出品予定の在庫プール</div>
         </div>
         <div className="bg-white p-4 rounded-xl border border-gray-300 shadow-2xs">
           <div className="flex items-center justify-between text-gray-500 mb-1">
-            <span className="font-semibold text-xs">店舗最終純利益</span>
+            <span className="font-semibold text-xs">松浦 最終純利益 (手残り)</span>
             <Target className="w-4 h-4 text-blue-600" />
           </div>
-          <div className={`font-mono text-2xl font-bold ${store.netProfit >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
-            ¥{formatCurrency(store.netProfit)}
+          <div className={`font-mono text-2xl font-bold ${matsuura.netProfit >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
+            ¥{formatCurrency(matsuura.netProfit)}
           </div>
-          <div className="text-[11px] text-gray-500 mt-1">広告費¥{formatCurrency(store.adCost)}・経費控除後</div>
+          <div className="text-[11px] text-gray-500 mt-1">広告費¥{formatCurrency(matsuura.adCost)}・経費¥{formatCurrency(matsuura.otherExpenses)}控除後</div>
         </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-300 shadow-xs overflow-hidden">
-        <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
-          <h3 className="font-bold text-sm text-gray-800 flex items-center gap-2">
-            <Users className="w-4 h-4 text-blue-600" />
-            査定員別 実績集計（広告費負担額は直接編集可能）
-          </h3>
-          <span className="text-[11px] text-gray-500">※ 広告費を変更すると純利益がリアルタイム再計算されます</span>
+      {/* 月次損益（P&L）＆ 販路別売上内訳 */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* 左: 月次損益計算書 */}
+        <div className="bg-white rounded-xl border border-gray-300 shadow-xs overflow-hidden">
+          <div className="px-4 py-3 bg-slate-800 text-white flex items-center justify-between">
+            <h3 className="font-bold text-sm flex items-center gap-2">
+              <Receipt className="w-4 h-4 text-emerald-400" />
+              松浦 月次損益計算書 (P&Lレポート)
+            </h3>
+            <span className="text-[10px] text-slate-300">粗利率 {marginPct.toFixed(1)}%</span>
+          </div>
+          <div className="p-4 space-y-2.5 text-xs font-mono">
+            <div className="flex items-center justify-between py-1.5 border-b border-gray-100">
+              <span className="font-sans font-semibold text-gray-700">① 売上高合計 (全販路)</span>
+              <span className="font-bold text-base text-blue-800">¥{formatCurrency(matsuura.salesTotal)}</span>
+            </div>
+            <div className="flex items-center justify-between py-1.5 border-b border-gray-100">
+              <span className="font-sans text-gray-600">② (-) 買取仕入れ原価合計 ({matsuura.purchaseCount}件)</span>
+              <span className="font-semibold text-rose-700">- ¥{formatCurrency(matsuura.purchaseTotal)}</span>
+            </div>
+            <div className="flex items-center justify-between py-2 px-3 bg-emerald-50 border border-emerald-200 rounded-lg">
+              <span className="font-sans font-bold text-emerald-950">③ (=) 売上総利益 (粗利)</span>
+              <span className="font-extrabold text-base text-emerald-800">¥{formatCurrency(matsuura.grossProfit)}</span>
+            </div>
+            <div className="flex items-center justify-between py-1.5 border-b border-gray-100">
+              <span className="font-sans text-gray-600">④ (-) 広告宣伝費合計 (クリック/直接編集)</span>
+              <div className="flex items-center gap-1">
+                <span className="text-rose-600">- ¥</span>
+                <input
+                  type="number"
+                  value={adCosts.松浦}
+                  onFocus={e => e.target.select()}
+                  onChange={e => onUpdateStaffAdCost('松浦', Number(e.target.value) || 0)}
+                  className="w-28 px-2 py-0.5 text-right border border-gray-300 rounded bg-white font-mono text-xs focus:border-emerald-500 outline-none"
+                />
+              </div>
+            </div>
+            <div className="flex items-center justify-between py-1.5 border-b border-gray-100">
+              <span className="font-sans text-gray-600">⑤ (-) 現場諸経費 (交通費・処分費計)</span>
+              <span className="font-semibold text-rose-700">- ¥{formatCurrency(matsuura.otherExpenses)}</span>
+            </div>
+            <div className={`flex items-center justify-between py-2.5 px-3 rounded-lg border-2 ${matsuura.netProfit >= 0 ? 'bg-cyan-50 border-cyan-400' : 'bg-rose-50 border-rose-300'}`}>
+              <span className="font-sans font-extrabold text-sm text-gray-900">⑥ (=) 最終営業純利益 (手残り)</span>
+              <span className={`font-extrabold text-lg ${matsuura.netProfit >= 0 ? 'text-cyan-900' : 'text-rose-700'}`}>
+                ¥{formatCurrency(matsuura.netProfit)}
+              </span>
+            </div>
+          </div>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs border-collapse">
-            <thead>
-              <tr className="bg-gray-100 text-gray-600 font-semibold border-b border-gray-300 text-center">
-                <th className="py-2.5 px-3 border-r border-gray-300 text-left">査定員名</th>
-                <th className="py-2.5 px-3 border-r border-gray-300 w-20">買取件数</th>
-                <th className="py-2.5 px-3 border-r border-gray-300 text-right">買取総額(仕入)</th>
-                <th className="py-2.5 px-3 border-r border-gray-300 text-right">売上合計</th>
-                <th className="py-2.5 px-3 border-r border-gray-300 text-right font-bold text-amber-900 bg-amber-50">粗利益</th>
-                <th className="py-2.5 px-3 border-r border-gray-300 text-right">粗利率</th>
-                <th className="py-2.5 px-3 border-r border-gray-300 text-right font-bold text-cyan-900 bg-cyan-50">客単価</th>
-                <th className="py-2.5 px-3 border-r border-gray-300 text-right text-purple-900 bg-purple-50">繰越在庫</th>
-                <th className="py-2.5 px-3 border-r border-gray-300 text-right">広告費負担 (編集可)</th>
-                <th className="py-2.5 px-3 text-right font-bold">最終利益</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200 font-mono">
-              {staffList.map(st => {
-                const margin = st.salesTotal > 0 ? (st.grossProfit / st.salesTotal) * 100 : 0;
-                return (
-                  <tr key={st.staffName} className="hover:bg-blue-50/40 transition-colors">
-                    <td className="py-2.5 px-3 font-sans font-bold text-gray-900 border-r border-gray-200 flex items-center gap-2">
-                      <span className="w-2.5 h-2.5 rounded-full bg-cyan-500" />
-                      <span>{st.staffName}</span>
-                    </td>
-                    <td className="py-2.5 px-3 text-center border-r border-gray-200 font-bold">{st.purchaseCount} 件</td>
-                    <td className="py-2.5 px-3 text-right border-r border-gray-200 text-rose-700">¥{formatCurrency(st.purchaseTotal)}</td>
-                    <td className="py-2.5 px-3 text-right border-r border-gray-200 font-semibold text-blue-900">¥{formatCurrency(st.salesTotal)}</td>
-                    <td className="py-2.5 px-3 text-right border-r border-gray-200 font-bold text-emerald-800 bg-amber-50/40">¥{formatCurrency(st.grossProfit)}</td>
-                    <td className="py-2.5 px-3 text-right border-r border-gray-200">{margin.toFixed(1)}%</td>
-                    <td className="py-2.5 px-3 text-right border-r border-gray-200 font-bold text-cyan-900 bg-cyan-50/40">¥{formatCurrency(st.averageCustomerSpend)}</td>
-                    <td className="py-2.5 px-3 text-right border-r border-gray-200 font-bold text-purple-700 bg-purple-50/40">¥{formatCurrency(st.carryoverTotal)}</td>
-                    <td className="py-2.5 px-3 text-right border-r border-gray-200">
-                      <div className="flex items-center justify-end gap-1">
-                        <span className="text-gray-400">¥</span>
-                        <input
-                          type="number"
-                          value={st.adCost}
-                          onChange={e => onUpdateStaffAdCost('松浦', Number(e.target.value) || 0)}
-                          className="w-24 px-1.5 py-0.5 text-right border border-gray-300 rounded bg-white font-mono text-xs focus:border-emerald-500 outline-none"
-                        />
-                      </div>
-                    </td>
-                    <td className="py-2.5 px-3 text-right font-bold">
-                      <span className={st.netProfit >= 0 ? 'text-emerald-700' : 'text-rose-600'}>
-                        ¥{formatCurrency(st.netProfit)}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+
+        {/* 右: 販路別売上内訳 */}
+        <div className="bg-white rounded-xl border border-gray-300 shadow-xs overflow-hidden flex flex-col">
+          <div className="px-4 py-3 bg-slate-800 text-white flex items-center justify-between">
+            <h3 className="font-bold text-sm flex items-center gap-2">
+              <Wallet className="w-4 h-4 text-amber-400" />
+              販路別 売上内訳 ＆ 構成比
+            </h3>
+            <span className="text-[10px] text-slate-300">売上合計: ¥{formatCurrency(matsuura.salesTotal)}</span>
+          </div>
+          <div className="p-4 space-y-3.5 flex-1 flex flex-col justify-center">
+            {channels.map(ch => {
+              const pct = matsuura.salesTotal > 0 ? (ch.val / matsuura.salesTotal) * 100 : 0;
+              return (
+                <div key={ch.label} className="space-y-1">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-semibold text-gray-700">{ch.label}</span>
+                    <div className="font-mono flex items-center gap-2">
+                      <span className={`font-bold ${ch.textColor}`}>¥{formatCurrency(ch.val)}</span>
+                      <span className="text-[11px] text-gray-500 w-12 text-right">({pct.toFixed(1)}%)</span>
+                    </div>
+                  </div>
+                  <div className="w-full h-2.5 bg-gray-100 rounded-full overflow-hidden">
+                    <div style={{ width: `${pct}%` }} className={`h-full ${ch.color} transition-all duration-300`} />
+                  </div>
+                </div>
+              );
+            })}
+            <div className="pt-2 border-t border-gray-100 flex items-center justify-between text-[11px] text-gray-500">
+              <span>未売却在庫として翌月繰越中:</span>
+              <span className="font-mono font-bold text-purple-700">¥{formatCurrency(matsuura.carryoverTotal)}</span>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -816,6 +923,8 @@ export const StaffAnalyticsView: React.FC<{
     </div>
   );
 };
+
+export const StaffAnalyticsView = PersonalAnalyticsView;
 
 export const MediaAnalyticsView: React.FC<{
   records: DealRecord[];
@@ -830,19 +939,25 @@ export const MediaAnalyticsView: React.FC<{
     const gross = salesSum - purchaseSum;
     const adCost = adCosts.mediaCosts[name] || 0;
     const avgTicket = count > 0 ? Math.round(salesSum / count) : 0;
+    const avgGross = count > 0 ? Math.round(gross / count) : 0;
     const cpa = count > 0 && adCost > 0 ? Math.round(adCost / count) : 0;
     const roi = adCost > 0 ? (gross / adCost) * 100 : 0;
     const netAfterAd = gross - adCost;
-    return { name, adCost, count, purchaseSum, salesSum, gross, avgTicket, cpa, roi, netAfterAd };
+    return { name, adCost, count, purchaseSum, salesSum, gross, avgTicket, avgGross, cpa, roi, netAfterAd };
   });
+
+  const totalAdCost = mediaStats.reduce((s, m) => s + m.adCost, 0);
+  const totalCount = mediaStats.reduce((s, m) => s + m.count, 0);
+  const totalGross = mediaStats.reduce((s, m) => s + m.gross, 0);
+  const totalNet = totalGross - totalAdCost;
 
   return (
     <div className="flex-1 overflow-auto bg-gray-100 p-4 space-y-5 text-xs text-gray-800">
       <div className="bg-white rounded-xl border border-gray-300 shadow-xs overflow-hidden">
-        <div className="px-4 py-3 bg-purple-900 text-white flex items-center justify-between">
+        <div className="px-4 py-3 bg-purple-900 text-white flex flex-wrap items-center justify-between gap-2">
           <h3 className="font-bold text-sm flex items-center gap-2">
             <Megaphone className="w-4 h-4 text-purple-300" />
-            集客媒体別 費用対効果・CPA・ROI シミュレーター（チラシ vs Web）
+            松浦 集客媒体別 費用対効果・CPA・ROI シミュレーター（チラシ vs Web）
           </h3>
           <span className="text-[11px] text-purple-200">※ 投下広告費を直接変更してCPA・ROIを試算できます</span>
         </div>
@@ -856,6 +971,7 @@ export const MediaAnalyticsView: React.FC<{
                 <th className="py-2.5 px-3 border-r border-gray-300 text-right">買取総額</th>
                 <th className="py-2.5 px-3 border-r border-gray-300 text-right">総売上額</th>
                 <th className="py-2.5 px-3 border-r border-gray-300 text-right font-bold text-emerald-800">獲得粗利</th>
+                <th className="py-2.5 px-3 border-r border-gray-300 text-right">平均粗利/件</th>
                 <th className="py-2.5 px-3 border-r border-gray-300 text-right">1件獲得単価(CPA)</th>
                 <th className="py-2.5 px-3 border-r border-gray-300 text-right">広告控除後純利</th>
                 <th className="py-2.5 px-3 text-right font-bold">ROI (粗利回収率)</th>
@@ -883,6 +999,7 @@ export const MediaAnalyticsView: React.FC<{
                       <input
                         type="number"
                         value={m.adCost}
+                        onFocus={e => e.target.select()}
                         onChange={e => onUpdateMediaAdCost(m.name, Number(e.target.value) || 0)}
                         className="w-28 px-1.5 py-0.5 text-right border border-gray-300 rounded bg-white font-mono text-xs focus:border-purple-500 outline-none"
                       />
@@ -892,6 +1009,7 @@ export const MediaAnalyticsView: React.FC<{
                   <td className="py-2.5 px-3 text-right border-r border-gray-200 text-rose-700">¥{formatCurrency(m.purchaseSum)}</td>
                   <td className="py-2.5 px-3 text-right border-r border-gray-200 font-semibold">¥{formatCurrency(m.salesSum)}</td>
                   <td className="py-2.5 px-3 text-right border-r border-gray-200 font-bold text-emerald-800">¥{formatCurrency(m.gross)}</td>
+                  <td className="py-2.5 px-3 text-right border-r border-gray-200 text-gray-700">¥{formatCurrency(m.avgGross)}</td>
                   <td className="py-2.5 px-3 text-right border-r border-gray-200 text-blue-700 font-semibold">
                     {m.cpa > 0 ? `¥${formatCurrency(m.cpa)}` : '-'}
                   </td>
@@ -907,31 +1025,64 @@ export const MediaAnalyticsView: React.FC<{
                   </td>
                 </tr>
               ))}
+              <tr className="bg-purple-50/70 font-bold border-t-2 border-purple-200">
+                <td className="py-2.5 px-3 font-sans border-r border-gray-200">全媒体 合計</td>
+                <td className="py-2.5 px-3 text-right border-r border-gray-200">¥{formatCurrency(totalAdCost)}</td>
+                <td className="py-2.5 px-3 text-center border-r border-gray-200">{totalCount} 件</td>
+                <td className="py-2.5 px-3 text-right border-r border-gray-200 text-rose-700">
+                  ¥{formatCurrency(mediaStats.reduce((s, m) => s + m.purchaseSum, 0))}
+                </td>
+                <td className="py-2.5 px-3 text-right border-r border-gray-200">
+                  ¥{formatCurrency(mediaStats.reduce((s, m) => s + m.salesSum, 0))}
+                </td>
+                <td className="py-2.5 px-3 text-right border-r border-gray-200 text-emerald-800">
+                  ¥{formatCurrency(totalGross)}
+                </td>
+                <td className="py-2.5 px-3 text-right border-r border-gray-200">
+                  ¥{formatCurrency(totalCount > 0 ? Math.round(totalGross / totalCount) : 0)}
+                </td>
+                <td className="py-2.5 px-3 text-right border-r border-gray-200 text-blue-700">
+                  {totalCount > 0 && totalAdCost > 0 ? `¥${formatCurrency(Math.round(totalAdCost / totalCount))}` : '-'}
+                </td>
+                <td className={`py-2.5 px-3 text-right border-r border-gray-200 ${totalNet >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
+                  ¥{formatCurrency(totalNet)}
+                </td>
+                <td className="py-2.5 px-3 text-right">
+                  {totalAdCost > 0 ? `${((totalGross / totalAdCost) * 100).toFixed(1)}%` : '-'}
+                </td>
+              </tr>
             </tbody>
           </table>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {STAFF_LIST.map(staff => {
-          const st = calcStaffStats(staff, records, adCosts[staff]);
-          return (
-            <div key={staff} className="bg-white rounded-xl border border-gray-300 p-4 shadow-2xs space-y-3">
-              <div className="flex items-center justify-between border-b border-gray-200 pb-2">
-                <span className="font-bold text-sm text-gray-800">{staff} 媒体別内訳</span>
-                <span className="font-mono text-xs text-emerald-700 font-bold">総粗利: ¥{formatCurrency(st.grossProfit)}</span>
+      {/* 松浦 媒体別 構成比ビジュアルサマリー */}
+      <div className="bg-white rounded-xl border border-gray-300 p-4 shadow-2xs space-y-3">
+        <div className="flex items-center justify-between border-b border-gray-200 pb-2">
+          <span className="font-bold text-sm text-gray-800">松浦 媒体別 粗利貢献シェア・平均客単価</span>
+          <span className="font-mono text-xs text-emerald-700 font-bold">総粗利: ¥{formatCurrency(totalGross)}</span>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
+          {mediaStats.map(m => {
+            const share = totalGross > 0 ? Math.max(0, (m.gross / totalGross) * 100) : 0;
+            return (
+              <div key={m.name} className="bg-gray-50 border border-gray-200 rounded-lg p-3 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-gray-800">{m.name}</span>
+                  <span className="text-[11px] font-mono bg-white px-1.5 py-0.5 rounded border border-gray-200">{m.count}件</span>
+                </div>
+                <div className="font-mono text-base font-extrabold text-emerald-700">¥{formatCurrency(m.gross)}</div>
+                <div className="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                  <div style={{ width: `${share}%` }} className="h-full bg-purple-600" />
+                </div>
+                <div className="flex justify-between text-[10px] text-gray-500 font-mono">
+                  <span>平均客単価: ¥{formatCurrency(m.avgTicket)}</span>
+                  <span>{share.toFixed(0)}%</span>
+                </div>
               </div>
-              <div className="space-y-1.5">
-                {st.mediaBreakdown.map(mb => (
-                  <div key={mb.media} className="flex items-center justify-between text-xs py-1 border-b border-gray-100 font-mono">
-                    <span className="font-sans font-medium text-gray-700">{mb.media} ({mb.count}件)</span>
-                    <span className="font-bold text-gray-900">粗利 ¥{formatCurrency(mb.totalGross)}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
     </div>
   );
