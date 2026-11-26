@@ -1,17 +1,19 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   FileSpreadsheet, Star, CheckCircle2, Coins, Plus, FileDown,
   Undo2, Redo2, Printer, Trash2, Copy, Search, ArrowUpDown,
   RotateCcw, Target, Smartphone, Table, Flame, CornerDownLeft,
-  Gavel, UserCheck, TrendingUp, MapPin, Map as MapIcon, ChevronDown, ChevronUp, BookOpen
+  Gavel, UserCheck, TrendingUp, MapPin, Map as MapIcon, ChevronDown, ChevronUp, BookOpen,
+  AlertTriangle, FileText, ShieldCheck, Filter
 } from 'lucide-react';
 import {
   DealRecord, AdCosts, STAFF_LIST, MEDIA_LIST, STATUS_LIST, CATEGORY_PRESETS,
-  formatCurrency, calcStaffStats, calcRecordSales, calcRecordGross
+  formatCurrency, calcStaffStats, calcRecordSales, calcRecordGross, calcRecordNet,
+  calcDefaultPlatformFee, getElapsedDaysFromDeal, isStagnantRecord
 } from '../data';
 import { WorkflowMapDiagram, GuideActionType } from './GuideModal';
 
-export type StatusFilterType = 'すべて' | '完結' | '繰越' | '市場出品中';
+export type StatusFilterType = 'すべて' | '完結' | '繰越' | '市場出品中' | '滞留30日超';
 
 export const SheetHeader: React.FC<{
   sheetTitle: string;
@@ -22,6 +24,7 @@ export const SheetHeader: React.FC<{
   onOpenGuide: () => void;
   statusFilter: StatusFilterType;
   onChangeStatusFilter: (s: StatusFilterType) => void;
+  stagnantCount?: number;
   mediaFilter: string;
   onChangeMediaFilter: (m: string) => void;
   onUndo: () => void;
@@ -41,6 +44,7 @@ export const SheetHeader: React.FC<{
   onOpenGuide,
   statusFilter,
   onChangeStatusFilter,
+  stagnantCount = 0,
   mediaFilter,
   onChangeMediaFilter,
   onUndo,
@@ -155,8 +159,8 @@ export const SheetHeader: React.FC<{
                             onClick={() => { onOpenExportModal(); setOpenMenu(null); }}
                             className="w-full text-left px-3 py-1.5 hover:bg-emerald-50 hover:text-emerald-700 flex items-center justify-between cursor-pointer"
                           >
-                            <span>スプレッドシート入出力</span>
-                            <span className="text-[10px] text-gray-400">.xlsx / TSV</span>
+                            <span>入出力・古物台帳出力</span>
+                            <span className="text-[10px] text-gray-400">.xlsx / CSV</span>
                           </button>
                           <button
                             onClick={() => { onOpenAddModal(); setOpenMenu(null); }}
@@ -213,6 +217,16 @@ export const SheetHeader: React.FC<{
                             <span>{statusFilter === '繰越' ? '✓' : ''}</span>
                           </button>
                           <button
+                            onClick={() => {
+                              onChangeStatusFilter(statusFilter === '滞留30日超' ? 'すべて' : '滞留30日超');
+                              setOpenMenu(null);
+                            }}
+                            className="w-full text-left px-3 py-1.5 hover:bg-rose-50 hover:text-rose-700 flex items-center justify-between cursor-pointer"
+                          >
+                            <span>滞留在庫(30日超)のみ絞り込み</span>
+                            <span>{statusFilter === '滞留30日超' ? '✓' : ''}</span>
+                          </button>
+                          <button
                             onClick={() => { onChangeViewMode(viewMode === 'table' ? 'card' : 'table'); setOpenMenu(null); }}
                             className="w-full text-left px-3 py-1.5 hover:bg-emerald-50 hover:text-emerald-700 flex items-center justify-between cursor-pointer"
                           >
@@ -242,7 +256,7 @@ export const SheetHeader: React.FC<{
                           onClick={() => { onOpenExportModal(); setOpenMenu(null); }}
                           className="w-full text-left px-3 py-1.5 hover:bg-emerald-50 hover:text-emerald-700 cursor-pointer"
                         >
-                          TSV/CSVデータの貼り付けインポート
+                          TSV/CSVデータの貼り付けインポート・古物台帳出力
                         </button>
                       )}
                     </div>
@@ -347,6 +361,25 @@ export const SheetHeader: React.FC<{
               {st === '繰越' ? '繰越・未売却' : st}
             </button>
           ))}
+          {(stagnantCount > 0 || statusFilter === '滞留30日超') && (
+            <button
+              onClick={() => onChangeStatusFilter(statusFilter === '滞留30日超' ? 'すべて' : '滞留30日超')}
+              className={`px-2 py-0.5 rounded text-[11px] font-bold transition-colors flex items-center gap-1 cursor-pointer ${
+                statusFilter === '滞留30日超'
+                  ? 'bg-rose-600 text-white'
+                  : 'bg-rose-50 text-rose-700 hover:bg-rose-100'
+              }`}
+              title="買取日から30日以上経過した未完結在庫で絞り込み"
+            >
+              <AlertTriangle className="w-3 h-3" />
+              <span>滞留30日超</span>
+              <span className={`px-1 rounded-full text-[10px] font-mono ${
+                statusFilter === '滞留30日超' ? 'bg-rose-800 text-white' : 'bg-rose-200 text-rose-900'
+              }`}>
+                {stagnantCount}
+              </span>
+            </button>
+          )}
         </div>
 
         {/* Media Filter */}
@@ -388,7 +421,7 @@ export const SheetHeader: React.FC<{
 
         <div className="ml-auto hidden xl:flex items-center gap-2 text-[11px] text-gray-500">
           <span className="bg-emerald-50 text-emerald-800 px-2 py-0.5 rounded border border-emerald-200">
-            ✓ セルを1クリックで即編集 | 最下部「＋入力」で連続追加 | 1クリックで市場出品連携
+            ✓ セル1クリック編集 | EC手数料10%自動計算 | 古物台帳＆30日滞留アラート対応
           </span>
         </div>
       </div>
@@ -398,6 +431,7 @@ export const SheetHeader: React.FC<{
 
 export const LedgerSheet: React.FC<{
   records: DealRecord[];
+  allRecords?: DealRecord[];
   adCosts: AdCosts;
   currentMonth: string;
   targetGrossProfit: number;
@@ -408,14 +442,18 @@ export const LedgerSheet: React.FC<{
   onDuplicateRecord: (r: DealRecord) => void;
   onSendToMarket: (r: DealRecord) => void;
   onOpenAddModal: () => void;
+  onEditRecordModal: (r: DealRecord) => void;
   onOpenGuide: () => void;
   onGuideAction: (action: GuideActionType) => void;
   statusFilter: StatusFilterType;
+  onChangeStatusFilter: (s: StatusFilterType) => void;
+  onSelectMonth?: (m: string) => void;
   mediaFilter: string;
   onUpdateMediaAdCost: (media: string, val: number) => void;
   viewMode: 'table' | 'card';
 }> = ({
   records,
+  allRecords,
   adCosts,
   currentMonth,
   targetGrossProfit,
@@ -426,9 +464,12 @@ export const LedgerSheet: React.FC<{
   onDuplicateRecord,
   onSendToMarket,
   onOpenAddModal,
+  onEditRecordModal,
   onOpenGuide,
   onGuideAction,
   statusFilter,
+  onChangeStatusFilter,
+  onSelectMonth,
   mediaFilter,
   onUpdateMediaAdCost,
   viewMode,
@@ -445,6 +486,7 @@ export const LedgerSheet: React.FC<{
   const [editingAdMedia, setEditingAdMedia] = useState<'チラシ' | 'HP' | null>(null);
   const [editingTarget, setEditingTarget] = useState(false);
   const [showStartMap, setShowStartMap] = useState(true);
+  const [isQuickManualFee, setIsQuickManualFee] = useState(false);
 
   const getTodayMD = () => {
     const now = new Date();
@@ -463,7 +505,10 @@ export const LedgerSheet: React.FC<{
     marketSales: '',
     goldSales: '',
     yahooSales: '',
+    mercariSales: '',
     recoverySales: '',
+    platformFee: '',
+    shippingCost: '',
     transportCost: '',
     disposalCost: '',
     status: '完結',
@@ -480,14 +525,32 @@ export const LedgerSheet: React.FC<{
     }
   }, [currentMonth]);
 
+  const updateQuickField = (field: keyof typeof quickRow, val: string) => {
+    setQuickRow(prev => {
+      const next = { ...prev, [field]: val };
+      if ((field === 'yahooSales' || field === 'mercariSales') && !isQuickManualFee) {
+        const y = Number(field === 'yahooSales' ? val : prev.yahooSales) || 0;
+        const mc = Number(field === 'mercariSales' ? val : prev.mercariSales) || 0;
+        const autoFee = calcDefaultPlatformFee(y, mc);
+        next.platformFee = y + mc > 0 ? String(autoFee) : '';
+      }
+      return next;
+    });
+  };
+
   const handleQuickAdd = () => {
     if (!quickRow.customerName.trim() && !quickRow.category.trim() && !quickRow.purchaseAmount && !quickRow.area.trim()) return;
     const pAmt = Number(quickRow.purchaseAmount) || 0;
     const gSales = Number(quickRow.goldSales) || 0;
     const mSales = Number(quickRow.marketSales) || 0;
     const ySales = Number(quickRow.yahooSales) || 0;
+    const mcSales = Number(quickRow.mercariSales) || 0;
     const rSales = Number(quickRow.recoverySales) || 0;
     const carry = Number(quickRow.carryover) || 0;
+    const feeVal = quickRow.platformFee !== ''
+      ? Number(quickRow.platformFee) || 0
+      : calcDefaultPlatformFee(ySales, mcSales);
+
     onAddRecord({
       id: `rec-q-${Date.now()}`,
       month: currentMonth,
@@ -502,14 +565,18 @@ export const LedgerSheet: React.FC<{
       marketSales: mSales,
       goldSales: gSales,
       yahooSales: ySales,
+      mercariSales: mcSales,
       recoverySales: rSales,
       estimatedGoldGrossProfit: gSales > 0 ? Math.max(0, gSales - pAmt) : 0,
       estimatedYahooGrossProfit: ySales > 0 ? Math.max(0, ySales - pAmt) : 0,
+      platformFee: feeVal,
+      shippingCost: Number(quickRow.shippingCost) || 0,
       transportCost: Number(quickRow.transportCost) || 0,
       disposalCost: Number(quickRow.disposalCost) || 0,
-      status: carry > 0 && gSales + mSales + ySales + rSales === 0 ? '全量繰越(未売却)' : quickRow.status,
+      status: carry > 0 && gSales + mSales + ySales + mcSales + rSales === 0 ? '全量繰越(未売却)' : quickRow.status,
       memo: quickRow.memo.trim(),
     });
+    setIsQuickManualFee(false);
     setQuickRow(prev => ({
       ...prev,
       area: '',
@@ -520,7 +587,10 @@ export const LedgerSheet: React.FC<{
       marketSales: '',
       goldSales: '',
       yahooSales: '',
+      mercariSales: '',
       recoverySales: '',
+      platformFee: '',
+      shippingCost: '',
       transportCost: '',
       disposalCost: '',
       status: '完結',
@@ -533,8 +603,29 @@ export const LedgerSheet: React.FC<{
     (Number(quickRow.goldSales) || 0) +
     (Number(quickRow.marketSales) || 0) +
     (Number(quickRow.yahooSales) || 0) +
+    (Number(quickRow.mercariSales) || 0) +
     (Number(quickRow.recoverySales) || 0);
   const quickGrossPreview = quickSales - quickPurchase;
+
+  // 滞留在庫（30日超・未完結）の抽出
+  const currentStagnantRecords = useMemo(
+    () => records.filter(r => isStagnantRecord(r, 30)),
+    [records]
+  );
+  const allSourceRecords = allRecords || records;
+  const allStagnantRecords = useMemo(
+    () => allSourceRecords.filter(r => isStagnantRecord(r, 30)),
+    [allSourceRecords]
+  );
+  const otherMonthStagnantRecords = useMemo(
+    () => allStagnantRecords.filter(r => (r.month || '2026/9') !== currentMonth),
+    [allStagnantRecords, currentMonth]
+  );
+
+  const currentStagnantPurchaseSum = currentStagnantRecords.reduce((s, r) => s + (r.purchaseAmount || 0), 0);
+  const currentStagnantCarrySum = currentStagnantRecords.reduce((s, r) => s + (r.carryover || 0), 0);
+  const allStagnantPurchaseSum = allStagnantRecords.reduce((s, r) => s + (r.purchaseAmount || 0), 0);
+  const allStagnantCarrySum = allStagnantRecords.reduce((s, r) => s + (r.carryover || 0), 0);
 
   const matsuura = calcStaffStats('松浦', records, adCosts.松浦);
   const chirashiAd = adCosts.mediaCosts['チラシ'] || 0;
@@ -549,9 +640,12 @@ export const LedgerSheet: React.FC<{
     'marketSales',
     'goldSales',
     'yahooSales',
+    'mercariSales',
     'recoverySales',
     'estimatedGoldGrossProfit',
     'estimatedYahooGrossProfit',
+    'platformFee',
+    'shippingCost',
     'transportCost',
     'disposalCost',
   ];
@@ -561,6 +655,7 @@ export const LedgerSheet: React.FC<{
       if (statusFilter === '完結' && r.status !== '完結') return false;
       if (statusFilter === '繰越' && r.carryover <= 0 && !r.status.includes('繰越')) return false;
       if (statusFilter === '市場出品中' && r.status !== '市場出品中') return false;
+      if (statusFilter === '滞留30日超' && !isStagnantRecord(r, 30)) return false;
       if (mediaFilter !== 'すべて' && r.media !== mediaFilter) return false;
       if (searchQuery.trim()) {
         const q = searchQuery.trim().toLowerCase();
@@ -568,6 +663,8 @@ export const LedgerSheet: React.FC<{
           r.customerName.toLowerCase().includes(q) ||
           (r.category || '').toLowerCase().includes(q) ||
           (r.area || '').toLowerCase().includes(q) ||
+          (r.customerAddress || '').toLowerCase().includes(q) ||
+          (r.itemFeatures || '').toLowerCase().includes(q) ||
           (r.memo || '').toLowerCase().includes(q) ||
           r.date.toLowerCase().includes(q);
         if (!match) return false;
@@ -605,6 +702,13 @@ export const LedgerSheet: React.FC<{
     if ((field === 'yahooSales' || field === 'purchaseAmount') && updated.yahooSales > 0) {
       updated.estimatedYahooGrossProfit = Math.max(0, updated.yahooSales - updated.purchaseAmount);
     }
+    if (field === 'yahooSales' || field === 'mercariSales') {
+      const prevAutoFee = calcDefaultPlatformFee(rec.yahooSales, rec.mercariSales);
+      const prevFee = rec.platformFee;
+      if (prevFee === undefined || prevFee === prevAutoFee) {
+        updated.platformFee = calcDefaultPlatformFee(updated.yahooSales, updated.mercariSales);
+      }
+    }
     onUpdateRecord(updated);
   };
 
@@ -629,11 +733,29 @@ export const LedgerSheet: React.FC<{
   const targetPct = targetGrossProfit > 0 ? Math.min(100, Math.max(0, (matsuura.grossProfit / targetGrossProfit) * 100)) : 0;
 
   const salesChannels = [
-    { label: '金・地金(即換金)', amount: matsuura.goldSalesTotal, color: 'bg-amber-500', badge: 'text-amber-800 bg-amber-100' },
-    { label: '古物市場(道具/ブランド)', amount: matsuura.marketSalesTotal, color: 'bg-emerald-500', badge: 'text-emerald-800 bg-emerald-100' },
-    { label: 'ヤフオク・EC', amount: matsuura.yahooSalesTotal, color: 'bg-blue-500', badge: 'text-blue-800 bg-blue-100' },
-    { label: '回収・その他', amount: matsuura.recoverySalesTotal, color: 'bg-slate-500', badge: 'text-slate-800 bg-slate-100' },
+    { label: '金・地金(即換金)', amount: matsuura.goldSalesTotal, color: 'bg-amber-500' },
+    { label: '古物市場', amount: matsuura.marketSalesTotal, color: 'bg-emerald-500' },
+    { label: 'ヤフオク', amount: matsuura.yahooSalesTotal, color: 'bg-blue-500' },
+    { label: 'メルカリShops', amount: matsuura.mercariSalesTotal, color: 'bg-rose-500' },
+    { label: '回収・その他', amount: matsuura.recoverySalesTotal, color: 'bg-slate-500' },
   ];
+
+  const handleAlertBannerClick = () => {
+    if (currentStagnantRecords.length > 0 || statusFilter === '滞留30日超') {
+      onChangeStatusFilter(statusFilter === '滞留30日超' ? 'すべて' : '滞留30日超');
+      return;
+    }
+    if (otherMonthStagnantRecords.length > 0 && onSelectMonth) {
+      const targetMonth = otherMonthStagnantRecords[0].month || '2026/9';
+      onSelectMonth(targetMonth);
+      onChangeStatusFilter('滞留30日超');
+    }
+  };
+
+  const activeAlertCount = currentStagnantRecords.length > 0 ? currentStagnantRecords.length : allStagnantRecords.length;
+  const activeAlertPurchaseSum = currentStagnantRecords.length > 0 ? currentStagnantPurchaseSum : allStagnantPurchaseSum;
+  const activeAlertCarrySum = currentStagnantRecords.length > 0 ? currentStagnantCarrySum : allStagnantCarrySum;
+  const activeAlertDisplayAmount = activeAlertCarrySum > 0 ? activeAlertCarrySum : activeAlertPurchaseSum;
 
   return (
     <div className="flex flex-col flex-1 bg-white overflow-hidden text-xs text-gray-800">
@@ -668,7 +790,7 @@ export const LedgerSheet: React.FC<{
               type="text"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              placeholder="お客様名・品目・地域・メモで検索..."
+              placeholder="お客様名・品目・地域・特徴で検索..."
               className="pl-7 pr-2.5 py-1 bg-white border border-gray-300 rounded-md text-xs focus:border-emerald-500 outline-none w-52"
             />
           </div>
@@ -691,6 +813,73 @@ export const LedgerSheet: React.FC<{
       {/* Main Content */}
       <div className="flex-1 overflow-auto bg-gray-100">
         <div className="inline-block min-w-full align-top bg-white p-3 space-y-4">
+          {/* Stagnant Stock Alert Banner (30日超 未完結) */}
+          {allStagnantRecords.length > 0 && (
+            <div
+              onClick={handleAlertBannerClick}
+              role="button"
+              tabIndex={0}
+              onKeyDown={e => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  handleAlertBannerClick();
+                }
+              }}
+              className={`rounded-xl border-2 px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 transition-all cursor-pointer select-none shadow-2xs ${
+                statusFilter === '滞留30日超'
+                  ? 'bg-rose-600 border-rose-700 text-white'
+                  : 'bg-rose-50 hover:bg-rose-100/80 border-rose-300 text-rose-950'
+              }`}
+            >
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <div className={`p-1.5 rounded-lg shrink-0 ${statusFilter === '滞留30日超' ? 'bg-rose-800 text-amber-300' : 'bg-rose-200 text-rose-800'}`}>
+                  <AlertTriangle className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="font-bold text-xs sm:text-sm flex items-center gap-2 flex-wrap">
+                    <span>
+                      【滞留在庫アラート】30日超の未完結案件：
+                      {currentStagnantRecords.length > 0
+                        ? `当月 ${currentStagnantRecords.length}件`
+                        : `他月シートに ${otherMonthStagnantRecords.length}件`}
+                    </span>
+                    <span className={`font-mono px-2 py-0.5 rounded text-xs font-extrabold ${
+                      statusFilter === '滞留30日超' ? 'bg-rose-800 text-white' : 'bg-white border border-rose-300 text-rose-800'
+                    }`}>
+                      合計 ¥{formatCurrency(activeAlertDisplayAmount)}
+                    </span>
+                  </div>
+                  <div className={`text-[11px] mt-0.5 ${statusFilter === '滞留30日超' ? 'text-rose-100' : 'text-rose-800'}`}>
+                    対象内訳 — 買取仕入計: ¥{formatCurrency(activeAlertPurchaseSum)}
+                    {activeAlertCarrySum > 0 && ` ／ 繰越在庫評価計: ¥${formatCurrency(activeAlertCarrySum)}`}
+                    {otherMonthStagnantRecords.length > 0 && currentStagnantRecords.length > 0 && (
+                      <span className="ml-2 font-semibold">
+                        （※他月にも {otherMonthStagnantRecords.length}件 の滞留在庫あり）
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <span className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 ${
+                  statusFilter === '滞留30日超'
+                    ? 'bg-white text-rose-700 shadow-2xs'
+                    : 'bg-rose-600 text-white shadow-2xs'
+                }`}>
+                  <Filter className="w-3.5 h-3.5" />
+                  <span>
+                    {statusFilter === '滞留30日超'
+                      ? `絞り込み解除（全${records.length}件へ）`
+                      : currentStagnantRecords.length > 0
+                      ? `クリックして該当${activeAlertCount}件のみ表示`
+                      : `${otherMonthStagnantRecords[0]?.month || ''}シートで確認`}
+                  </span>
+                </span>
+              </div>
+            </div>
+          )}
+
           {/* Top Personal Dashboard (松浦専用 統合サマリー) */}
           <div className="border border-gray-300 rounded shadow-xs bg-white overflow-hidden">
             <div className="bg-slate-800 text-white px-4 py-1.5 flex flex-wrap items-center justify-between text-xs gap-2">
@@ -733,7 +922,7 @@ export const LedgerSheet: React.FC<{
                         onBlur={() => setEditingTarget(false)}
                         onKeyDown={e => e.key === 'Enter' && setEditingTarget(false)}
                         autoFocus
-                        className="w-28 px-1.5 py-0.2 bg-slate-800 border border-emerald-400 rounded font-mono text-white text-right outline-none"
+                        className="w-28 px-1.5 py-0.5 bg-slate-800 border border-emerald-400 rounded font-mono text-white text-right outline-none"
                       />
                     ) : (
                       <span
@@ -766,7 +955,7 @@ export const LedgerSheet: React.FC<{
                 <div className="flex items-center justify-between">
                   <span className="flex items-center gap-1.5 font-semibold text-amber-300">
                     <Flame className="w-3.5 h-3.5" />
-                    広告費・経費回収ライン (分岐点: ¥{formatCurrency(totalFixedCosts)}):
+                    広告費・経費・手数料回収ライン (分岐点: ¥{formatCurrency(totalFixedCosts)}):
                   </span>
                   <span className="font-mono font-bold">
                     {totalFixedCosts === 0 ? (
@@ -880,14 +1069,17 @@ export const LedgerSheet: React.FC<{
                         <span className="text-gray-500 font-mono">他広告: ¥{formatCurrency(otherMediaAd)}</span>
                       )}
                     </div>
-                    <span className="text-gray-600 font-mono">
-                      現場経費(交通/処分): <strong className="text-rose-700">¥{formatCurrency(matsuura.otherExpenses)}</strong>
+                    <span
+                      className="text-gray-600 font-mono"
+                      title={`販売手数料¥${formatCurrency(matsuura.platformFeeTotal)} + 送料梱包¥${formatCurrency(matsuura.shippingCostTotal)} + 交通費¥${formatCurrency(matsuura.transportCostTotal)} + 処分費¥${formatCurrency(matsuura.disposalCostTotal)}`}
+                    >
+                      経費・手数料計: <strong className="text-rose-700">¥{formatCurrency(matsuura.otherExpenses)}</strong>
                     </span>
                   </div>
 
-                  <div className="flex items-center justify-between pt-0.5">
+                  <div className="flex items-center justify-between pt-0.5 flex-wrap gap-1">
                     <span className="font-bold text-gray-700 text-xs">
-                      粗利 ¥{formatCurrency(matsuura.grossProfit)} − 広告 ¥{formatCurrency(matsuura.adCost)} − 経費 ¥{formatCurrency(matsuura.otherExpenses)} ＝
+                      粗利 ¥{formatCurrency(matsuura.grossProfit)} − 広告 ¥{formatCurrency(matsuura.adCost)} − 経費・手数料 ¥{formatCurrency(matsuura.otherExpenses)} ＝
                     </span>
                     <div className="flex items-center gap-1.5">
                       <span className="text-xs font-bold text-cyan-950">最終手残り純利益:</span>
@@ -910,7 +1102,7 @@ export const LedgerSheet: React.FC<{
                 </div>
 
                 {/* 販路別 売上ミニバー */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5">
                   {salesChannels.map(ch => {
                     const pct = matsuura.salesTotal > 0 ? Math.round((ch.amount / matsuura.salesTotal) * 100) : 0;
                     return (
@@ -1031,12 +1223,30 @@ export const LedgerSheet: React.FC<{
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {filteredRecords.map(rec => {
                     const gross = calcRecordGross(rec);
+                    const net = calcRecordNet(rec);
+                    const elapsedDays = getElapsedDaysFromDeal(rec);
+                    const isStagnant = isStagnantRecord(rec, 30);
                     return (
-                      <div key={rec.id} className="bg-white border border-gray-300 rounded-xl p-4 shadow-2xs space-y-3">
+                      <div
+                        key={rec.id}
+                        className={`bg-white rounded-xl p-4 shadow-2xs space-y-3 ${
+                          isStagnant ? 'border-2 border-rose-400 bg-rose-50/15' : 'border border-gray-300'
+                        }`}
+                      >
                         <div className="flex items-center justify-between border-b border-gray-100 pb-2 gap-2">
-                          <div className="flex items-center gap-2 min-w-0">
+                          <div className="flex items-center gap-2 min-w-0 flex-wrap">
                             <span className="px-2 py-0.5 bg-gray-100 rounded font-mono font-bold text-gray-700 shrink-0">{rec.date}</span>
+                            {isStagnant && elapsedDays !== null && (
+                              <span className="px-1.5 py-0.5 bg-rose-100 text-rose-800 border border-rose-300 rounded font-bold text-[10px] shrink-0">
+                                滞留 {elapsedDays}日
+                              </span>
+                            )}
                             <span className="font-bold text-sm text-gray-900 truncate">{rec.customerName}</span>
+                            {(rec.idDocType || rec.customerAddress) && (
+                              <span title="古物台帳・本人確認入力済" className="text-emerald-600 shrink-0">
+                                <ShieldCheck className="w-3.5 h-3.5" />
+                              </span>
+                            )}
                             {rec.area && (
                               <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded text-[10px] shrink-0">
                                 <MapPin className="w-2.5 h-2.5" />
@@ -1052,6 +1262,13 @@ export const LedgerSheet: React.FC<{
                             >
                               {MEDIA_LIST.map(m => <option key={m} value={m}>{m}</option>)}
                             </select>
+                            <button
+                              onClick={() => onEditRecordModal(rec)}
+                              className="p-1 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded cursor-pointer"
+                              title="詳細・古物台帳情報を編集"
+                            >
+                              <FileText className="w-4 h-4" />
+                            </button>
                             <button
                               onClick={() => onSendToMarket(rec)}
                               className="p-1 text-emerald-700 hover:bg-emerald-50 rounded cursor-pointer"
@@ -1098,7 +1315,7 @@ export const LedgerSheet: React.FC<{
                           </select>
                         </div>
 
-                        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 font-mono text-xs">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 font-mono text-xs">
                           <div className="bg-rose-50 p-2 rounded border border-rose-200">
                             <div className="text-[10px] text-rose-700 font-sans">買取金額(仕入)</div>
                             <input
@@ -1129,16 +1346,6 @@ export const LedgerSheet: React.FC<{
                               className="w-full bg-white border border-emerald-300 rounded px-1.5 py-0.5 font-bold text-emerald-900 mt-0.5"
                             />
                           </div>
-                          <div className="bg-blue-50 p-2 rounded border border-blue-200">
-                            <div className="text-[10px] text-blue-800 font-sans">Y売上(EC)</div>
-                            <input
-                              type="number"
-                              value={rec.yahooSales}
-                              onFocus={e => e.target.select()}
-                              onChange={e => applyRecordFieldUpdate(rec, 'yahooSales', e.target.value)}
-                              className="w-full bg-white border border-blue-300 rounded px-1.5 py-0.5 font-bold text-blue-900 mt-0.5"
-                            />
-                          </div>
                           <div className="bg-purple-50 p-2 rounded border border-purple-200">
                             <div className="text-[10px] text-purple-800 font-sans">翌月繰越</div>
                             <input
@@ -1149,13 +1356,61 @@ export const LedgerSheet: React.FC<{
                               className="w-full bg-white border border-purple-300 rounded px-1.5 py-0.5 font-bold text-purple-900 mt-0.5"
                             />
                           </div>
+                          <div className="bg-blue-50 p-2 rounded border border-blue-200">
+                            <div className="text-[10px] text-blue-800 font-sans">Y売上(ヤフオク)</div>
+                            <input
+                              type="number"
+                              value={rec.yahooSales}
+                              onFocus={e => e.target.select()}
+                              onChange={e => applyRecordFieldUpdate(rec, 'yahooSales', e.target.value)}
+                              className="w-full bg-white border border-blue-300 rounded px-1.5 py-0.5 font-bold text-blue-900 mt-0.5"
+                            />
+                          </div>
+                          <div className="bg-rose-50/70 p-2 rounded border border-rose-200">
+                            <div className="text-[10px] text-rose-800 font-sans">メルカリShops</div>
+                            <input
+                              type="number"
+                              value={rec.mercariSales || 0}
+                              onFocus={e => e.target.select()}
+                              onChange={e => applyRecordFieldUpdate(rec, 'mercariSales', e.target.value)}
+                              className="w-full bg-white border border-rose-300 rounded px-1.5 py-0.5 font-bold text-rose-900 mt-0.5"
+                            />
+                          </div>
+                          <div className="bg-orange-50 p-2 rounded border border-orange-200">
+                            <div className="text-[10px] text-orange-800 font-sans">販売手数料(10%自動)</div>
+                            <input
+                              type="number"
+                              value={rec.platformFee || 0}
+                              onFocus={e => e.target.select()}
+                              onChange={e => applyRecordFieldUpdate(rec, 'platformFee', e.target.value)}
+                              className="w-full bg-white border border-orange-300 rounded px-1.5 py-0.5 font-bold text-orange-900 mt-0.5"
+                            />
+                          </div>
+                          <div className="bg-gray-50 p-2 rounded border border-gray-200">
+                            <div className="text-[10px] text-gray-700 font-sans">送料・梱包費</div>
+                            <input
+                              type="number"
+                              value={rec.shippingCost || 0}
+                              onFocus={e => e.target.select()}
+                              onChange={e => applyRecordFieldUpdate(rec, 'shippingCost', e.target.value)}
+                              className="w-full bg-white border border-gray-300 rounded px-1.5 py-0.5 font-bold text-gray-900 mt-0.5"
+                            />
+                          </div>
                         </div>
 
-                        <div className="flex items-center justify-between pt-2 border-t border-gray-100 font-mono">
-                          <span className="text-xs font-sans text-gray-500">案件粗利 (売上計 - 仕入):</span>
-                          <span className={`text-sm font-extrabold ${gross >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
-                            {gross >= 0 ? '+' : ''}¥{formatCurrency(gross)}
-                          </span>
+                        <div className="flex items-center justify-between pt-2 border-t border-gray-100 font-mono text-xs">
+                          <div>
+                            <span className="font-sans text-gray-500 mr-1.5">粗利:</span>
+                            <span className={`font-bold ${gross >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
+                              {gross >= 0 ? '+' : ''}¥{formatCurrency(gross)}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="font-sans text-gray-500 mr-1.5">経費・手数料後:</span>
+                            <span className={`text-sm font-extrabold ${net >= 0 ? 'text-cyan-800' : 'text-rose-600'}`}>
+                              {net >= 0 ? '+' : ''}¥{formatCurrency(net)}
+                            </span>
+                          </div>
                         </div>
                       </div>
                     );
@@ -1167,7 +1422,7 @@ export const LedgerSheet: React.FC<{
             /* Main Spreadsheet Table */
             <div className="border border-gray-300 rounded shadow-xs bg-white overflow-hidden">
               <div className="flex flex-wrap items-center justify-between px-3 py-2 bg-gray-50 border-b border-gray-200 gap-2">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-bold text-gray-700 flex items-center gap-1.5">
                     <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
                     松浦 出張買取 実績明細シート（1クリックで即編集＋最下部クイック連続追加）
@@ -1176,7 +1431,11 @@ export const LedgerSheet: React.FC<{
                     表示中: {filteredRecords.length} 件
                   </span>
                   {statusFilter !== 'すべて' && (
-                    <span className="text-xs bg-purple-100 text-purple-800 border border-purple-300 px-2 py-0.5 rounded-md font-medium">
+                    <span className={`text-xs px-2 py-0.5 rounded-md font-medium border ${
+                      statusFilter === '滞留30日超'
+                        ? 'bg-rose-100 text-rose-800 border-rose-300'
+                        : 'bg-purple-100 text-purple-800 border-purple-300'
+                    }`}>
                       ※ 状態: {statusFilter}
                     </span>
                   )}
@@ -1192,7 +1451,7 @@ export const LedgerSheet: React.FC<{
                     className="flex items-center gap-1 px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
                   >
                     <Plus className="w-3.5 h-3.5" />
-                    <span>詳細モーダルで追加</span>
+                    <span>詳細・古物情報モーダルで追加</span>
                   </button>
                 </div>
               </div>
@@ -1202,7 +1461,7 @@ export const LedgerSheet: React.FC<{
                   <thead>
                     <tr className="bg-gray-100 text-gray-500 border-b border-gray-300 text-[10px] font-mono text-center">
                       <th className="w-10 py-1 bg-gray-200 border-r border-gray-300">#</th>
-                      <th className="w-16 border-r border-gray-300">A (日付)</th>
+                      <th className="w-20 border-r border-gray-300">A (日付)</th>
                       <th className="w-24 border-r border-gray-300">B (地域)</th>
                       <th className="w-32 border-r border-gray-300">C (お客様/案件)</th>
                       <th className="w-32 border-r border-gray-300">D (品目)</th>
@@ -1211,14 +1470,17 @@ export const LedgerSheet: React.FC<{
                       <th className="w-24 border-r border-gray-300 bg-purple-50 text-purple-900">G (繰越/在庫)</th>
                       <th className="w-24 border-r border-gray-300 bg-emerald-50 text-emerald-900">H (市場売上)</th>
                       <th className="w-24 border-r border-gray-300 bg-amber-100/60 text-amber-900 font-bold">I (金売上)</th>
-                      <th className="w-24 border-r border-gray-300">J (Y売上)</th>
-                      <th className="w-20 border-r border-gray-300">K (回収/他)</th>
-                      <th className="w-24 border-r border-gray-300 bg-emerald-100/70 text-emerald-900 font-bold">L (案件粗利)</th>
-                      <th className="w-16 border-r border-gray-300">M (交通費)</th>
-                      <th className="w-16 border-r border-gray-300">N (処分費)</th>
-                      <th className="w-28 border-r border-gray-300">O (状態)</th>
-                      <th className="min-w-44 border-r border-gray-300">P (メモ・備考)</th>
-                      <th className="w-24">操作</th>
+                      <th className="w-20 border-r border-gray-300">J (Y売上)</th>
+                      <th className="w-24 border-r border-gray-300 bg-rose-50 text-rose-900">K (メルカリ)</th>
+                      <th className="w-20 border-r border-gray-300">L (回収/他)</th>
+                      <th className="w-24 border-r border-gray-300 bg-emerald-100/70 text-emerald-900 font-bold">M (案件粗利)</th>
+                      <th className="w-20 border-r border-gray-300 bg-orange-50 text-orange-900">N (手数料)</th>
+                      <th className="w-20 border-r border-gray-300">O (送料/梱包)</th>
+                      <th className="w-16 border-r border-gray-300">P (交通費)</th>
+                      <th className="w-16 border-r border-gray-300">Q (処分費)</th>
+                      <th className="w-28 border-r border-gray-300">R (状態)</th>
+                      <th className="min-w-40 border-r border-gray-300">S (メモ・備考)</th>
+                      <th className="w-28">操作</th>
                     </tr>
                     <tr className="bg-gray-50 text-gray-700 border-b border-gray-300 font-semibold text-center">
                       <td className="py-2 bg-gray-100 border-r border-gray-300 font-mono text-[11px]">行</td>
@@ -1230,15 +1492,18 @@ export const LedgerSheet: React.FC<{
                       <td className="px-2 py-1.5 border-r border-gray-300">集客媒体</td>
                       <td className="px-2 py-1.5 border-r border-gray-300 bg-purple-100/70 text-purple-950 text-right">翌月繰越</td>
                       <td className="px-2 py-1.5 border-r border-gray-300 bg-emerald-100/70 text-emerald-950 text-right">市場売上</td>
-                      <td className="px-2 py-1.5 border-r border-gray-300 bg-amber-200/80 text-amber-950 text-right">金売上(即換金)</td>
+                      <td className="px-2 py-1.5 border-r border-gray-300 bg-amber-200/80 text-amber-950 text-right">金売上</td>
                       <td className="px-2 py-1.5 border-r border-gray-300 text-right">Y売上</td>
+                      <td className="px-2 py-1.5 border-r border-gray-300 bg-rose-100/70 text-rose-950 text-right">メルカリShops</td>
                       <td className="px-2 py-1.5 border-r border-gray-300 text-right">回収・他</td>
                       <td className="px-2 py-1.5 border-r border-gray-300 bg-emerald-200/70 text-emerald-950 text-right">自動粗利</td>
+                      <td className="px-2 py-1.5 border-r border-gray-300 bg-orange-100/70 text-orange-950 text-right" title="ヤフオク・メルカリ売上の10%自動計算（クリックで手動変更可）">EC手数料</td>
+                      <td className="px-2 py-1.5 border-r border-gray-300 text-right">送料/梱包</td>
                       <td className="px-2 py-1.5 border-r border-gray-300 text-right">交通費</td>
                       <td className="px-2 py-1.5 border-r border-gray-300 text-right">処分費</td>
                       <td className="px-2 py-1.5 border-r border-gray-300">案件状態</td>
                       <td className="px-2 py-1.5 border-r border-gray-300 text-left">詳細・メモ</td>
-                      <td className="px-2 py-1.5">市場/複製/消</td>
+                      <td className="px-2 py-1.5">詳細/市/複/消</td>
                     </tr>
                   </thead>
 
@@ -1247,6 +1512,9 @@ export const LedgerSheet: React.FC<{
                       const rowNum = 13 + idx;
                       const isRowSelected = selectedCell.row === rowNum;
                       const dealGross = calcRecordGross(rec);
+                      const elapsedDays = getElapsedDaysFromDeal(rec);
+                      const isStagnant = isStagnantRecord(rec, 30);
+                      const hasKobutsuInfo = Boolean(rec.idDocType || rec.idDocNumber || rec.customerAddress);
 
                       const renderEditableNumber = (colLetter: string, field: keyof DealRecord, extraClass = '') => {
                         const val = Number(rec[field]) || 0;
@@ -1280,7 +1548,13 @@ export const LedgerSheet: React.FC<{
                         );
                       };
 
-                      const renderEditableText = (colLetter: string, field: keyof DealRecord, extraClass = '', listId?: string) => {
+                      const renderEditableText = (
+                        colLetter: string,
+                        field: keyof DealRecord,
+                        extraClass = '',
+                        listId?: string,
+                        prefixBadge?: React.ReactNode
+                      ) => {
                         const val = String(rec[field] ?? '');
                         const isEditing = editingCell?.id === rec.id && editingCell.field === field;
                         return (
@@ -1307,7 +1581,10 @@ export const LedgerSheet: React.FC<{
                                 className="w-full px-1 py-0.5 border border-emerald-500 rounded bg-white text-xs outline-none"
                               />
                             ) : (
-                              val || '-'
+                              <div className="flex items-center gap-1 justify-between">
+                                <span className="truncate">{val || '-'}</span>
+                                {prefixBadge}
+                              </div>
                             )}
                           </td>
                         );
@@ -1317,16 +1594,68 @@ export const LedgerSheet: React.FC<{
                         <tr
                           key={rec.id}
                           className={`hover:bg-blue-50/50 transition-colors ${
-                            isRowSelected ? 'bg-blue-50/70' : idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'
+                            isStagnant
+                              ? 'bg-rose-50/50'
+                              : isRowSelected
+                              ? 'bg-blue-50/70'
+                              : idx % 2 === 0
+                              ? 'bg-white'
+                              : 'bg-gray-50/30'
                           }`}
                         >
-                          <td className="py-1 px-1 text-center bg-gray-100 border-r border-gray-300 text-gray-500 text-[11px] font-mono select-none">
+                          <td className={`py-1 px-1 text-center border-r border-gray-300 text-[11px] font-mono select-none ${
+                            isStagnant ? 'bg-rose-100 text-rose-800 font-bold' : 'bg-gray-100 text-gray-500'
+                          }`}>
                             {rowNum}
                           </td>
-                          {renderEditableText('A', 'date', 'text-center font-medium text-gray-700')}
-                          {renderEditableText('B', 'area', 'text-gray-600 truncate max-w-24')}
-                          {renderEditableText('C', 'customerName', 'font-medium text-gray-900 truncate max-w-32')}
-                          {renderEditableText('D', 'category', 'text-gray-600 truncate max-w-32', 'category-presets')}
+                          {/* A: 日付 */}
+                          <td
+                            onClick={() => {
+                              if (!(editingCell?.id === rec.id && editingCell.field === 'date')) {
+                                handleSelectAndEdit(rowNum, 'A', rec, 'date');
+                              }
+                            }}
+                            className="px-1.5 py-1 text-center font-sans font-medium text-gray-700 border-r border-gray-200 cursor-pointer hover:ring-1 hover:ring-inset hover:ring-emerald-400"
+                            title="クリックで日付を編集"
+                          >
+                            {editingCell?.id === rec.id && editingCell.field === 'date' ? (
+                              <input
+                                type="text"
+                                value={editValue}
+                                onFocus={e => e.target.select()}
+                                onChange={e => setEditValue(e.target.value)}
+                                onBlur={() => handleCommitEdit(rec)}
+                                onKeyDown={e => {
+                                  if (e.key === 'Enter' && !e.nativeEvent.isComposing) handleCommitEdit(rec);
+                                  if (e.key === 'Escape') setEditingCell(null);
+                                }}
+                                autoFocus
+                                className="w-full px-1 py-0.5 border border-emerald-500 rounded bg-white text-center text-xs outline-none"
+                              />
+                            ) : (
+                              <div className="flex flex-col items-center leading-tight">
+                                <span>{rec.date}</span>
+                                {isStagnant && elapsedDays !== null && (
+                                  <span className="text-[9px] px-1 rounded bg-rose-200 text-rose-900 font-bold whitespace-nowrap mt-0.5">
+                                    滞留{elapsedDays}日
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </td>
+                          {renderEditableText('B', 'area', 'text-gray-600 max-w-24')}
+                          {renderEditableText(
+                            'C',
+                            'customerName',
+                            'font-medium text-gray-900 max-w-32',
+                            undefined,
+                            hasKobutsuInfo ? (
+                              <span title="古物台帳・本人確認入力済" className="text-emerald-600 shrink-0">
+                                <ShieldCheck className="w-3 h-3" />
+                              </span>
+                            ) : undefined
+                          )}
+                          {renderEditableText('D', 'category', 'text-gray-600 max-w-32', 'category-presets')}
                           {renderEditableNumber(
                             'E',
                             'purchaseAmount',
@@ -1372,12 +1701,17 @@ export const LedgerSheet: React.FC<{
                           )}
                           {renderEditableNumber(
                             'K',
+                            'mercariSales',
+                            `bg-rose-50/40 ${(rec.mercariSales || 0) > 0 ? 'text-rose-800 font-bold' : 'text-gray-400'}`
+                          )}
+                          {renderEditableNumber(
+                            'L',
                             'recoverySales',
                             rec.recoverySales > 0 ? 'text-gray-800 font-semibold' : 'text-gray-400'
                           )}
-                          {/* L: 案件粗利 (自動計算) */}
+                          {/* M: 案件粗利 (自動計算) */}
                           <td
-                            onClick={() => handleSelectCellOnly(rowNum, 'L', rec, 'purchaseAmount')}
+                            onClick={() => handleSelectCellOnly(rowNum, 'M', rec, 'purchaseAmount')}
                             className={`px-2 py-1 text-right border-r border-gray-200 font-bold ${
                               dealGross > 0
                                 ? 'bg-emerald-50/70 text-emerald-700'
@@ -1392,10 +1726,20 @@ export const LedgerSheet: React.FC<{
                             {dealGross > 0 ? '+' : ''}
                             {formatCurrency(dealGross)}
                           </td>
-                          {renderEditableNumber('M', 'transportCost', 'text-gray-600')}
-                          {renderEditableNumber('N', 'disposalCost', 'text-gray-600')}
+                          {renderEditableNumber(
+                            'N',
+                            'platformFee',
+                            `bg-orange-50/40 ${(rec.platformFee || 0) > 0 ? 'text-orange-800 font-semibold' : 'text-gray-400'}`
+                          )}
+                          {renderEditableNumber(
+                            'O',
+                            'shippingCost',
+                            (rec.shippingCost || 0) > 0 ? 'text-gray-700' : 'text-gray-400'
+                          )}
+                          {renderEditableNumber('P', 'transportCost', 'text-gray-600')}
+                          {renderEditableNumber('Q', 'disposalCost', 'text-gray-600')}
                           <td
-                            onClick={() => handleSelectCellOnly(rowNum, 'O', rec, 'status')}
+                            onClick={() => handleSelectCellOnly(rowNum, 'R', rec, 'status')}
                             className="px-1.5 py-1 text-center border-r border-gray-200 font-sans"
                           >
                             <select
@@ -1414,9 +1758,16 @@ export const LedgerSheet: React.FC<{
                               {STATUS_LIST.map(st => <option key={st} value={st}>{st}</option>)}
                             </select>
                           </td>
-                          {renderEditableText('P', 'memo', 'text-gray-600 truncate max-w-56 text-[11px]')}
+                          {renderEditableText('S', 'memo', 'text-gray-600 max-w-48 text-[11px]')}
                           <td className="px-1.5 py-1 text-center">
                             <div className="flex items-center justify-center gap-0.5">
+                              <button
+                                onClick={() => onEditRecordModal(rec)}
+                                className="p-1 text-slate-500 hover:text-slate-900 rounded hover:bg-slate-100 transition-colors cursor-pointer"
+                                title="詳細・古物台帳情報を編集"
+                              >
+                                <FileText className="w-3.5 h-3.5" />
+                              </button>
                               <button
                                 onClick={() => onSendToMarket(rec)}
                                 className="p-1 text-emerald-600 hover:text-emerald-800 rounded hover:bg-emerald-50 transition-colors cursor-pointer"
@@ -1454,14 +1805,14 @@ export const LedgerSheet: React.FC<{
                           <input
                             type="text"
                             value={quickRow.date}
-                            onChange={e => setQuickRow({ ...quickRow, date: e.target.value })}
+                            onChange={e => updateQuickField('date', e.target.value)}
                             onKeyDown={e => e.key === 'Enter' && !e.nativeEvent.isComposing && handleQuickAdd()}
                             placeholder="日付"
                             className="w-full px-1 py-1 bg-white border border-gray-300 rounded text-center font-sans text-xs focus:border-emerald-600 outline-none"
                           />
                           <button
                             type="button"
-                            onClick={() => setQuickRow({ ...quickRow, date: getTodayMD() })}
+                            onClick={() => updateQuickField('date', getTodayMD())}
                             className="px-1 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 rounded text-[9px] font-sans font-bold shrink-0 cursor-pointer"
                             title="今日の日付をセット"
                           >
@@ -1473,7 +1824,7 @@ export const LedgerSheet: React.FC<{
                         <input
                           type="text"
                           value={quickRow.area}
-                          onChange={e => setQuickRow({ ...quickRow, area: e.target.value })}
+                          onChange={e => updateQuickField('area', e.target.value)}
                           onKeyDown={e => e.key === 'Enter' && !e.nativeEvent.isComposing && handleQuickAdd()}
                           placeholder="地域"
                           className="w-full px-1.5 py-1 bg-white border border-gray-300 rounded font-sans text-xs focus:border-emerald-600 outline-none"
@@ -1483,9 +1834,9 @@ export const LedgerSheet: React.FC<{
                         <input
                           type="text"
                           value={quickRow.customerName}
-                          onChange={e => setQuickRow({ ...quickRow, customerName: e.target.value })}
+                          onChange={e => updateQuickField('customerName', e.target.value)}
                           onKeyDown={e => e.key === 'Enter' && !e.nativeEvent.isComposing && handleQuickAdd()}
-                          placeholder="お客様名 (Tabで次へ)"
+                          placeholder="お客様名 (Tab)"
                           className="w-full px-1.5 py-1 bg-white border border-gray-300 rounded font-sans text-xs focus:border-emerald-600 outline-none"
                         />
                       </td>
@@ -1494,9 +1845,9 @@ export const LedgerSheet: React.FC<{
                           type="text"
                           list="category-presets"
                           value={quickRow.category}
-                          onChange={e => setQuickRow({ ...quickRow, category: e.target.value })}
+                          onChange={e => updateQuickField('category', e.target.value)}
                           onKeyDown={e => e.key === 'Enter' && !e.nativeEvent.isComposing && handleQuickAdd()}
-                          placeholder="品目 (候補選択可)"
+                          placeholder="品目"
                           className="w-full px-1.5 py-1 bg-white border border-gray-300 rounded font-sans text-xs focus:border-emerald-600 outline-none"
                         />
                       </td>
@@ -1504,7 +1855,7 @@ export const LedgerSheet: React.FC<{
                         <input
                           type="number"
                           value={quickRow.purchaseAmount}
-                          onChange={e => setQuickRow({ ...quickRow, purchaseAmount: e.target.value })}
+                          onChange={e => updateQuickField('purchaseAmount', e.target.value)}
                           onKeyDown={e => e.key === 'Enter' && !e.nativeEvent.isComposing && handleQuickAdd()}
                           placeholder="買取額"
                           className="w-full px-1.5 py-1 bg-white border border-cyan-300 rounded text-right text-xs focus:border-cyan-600 outline-none"
@@ -1513,7 +1864,7 @@ export const LedgerSheet: React.FC<{
                       <td className="p-1 border-r border-gray-200 text-center font-sans">
                         <select
                           value={quickRow.media}
-                          onChange={e => setQuickRow({ ...quickRow, media: e.target.value })}
+                          onChange={e => updateQuickField('media', e.target.value)}
                           className="px-1 py-1 bg-white border border-gray-300 rounded text-[10px] outline-none"
                         >
                           {MEDIA_LIST.map(m => <option key={m} value={m}>{m}</option>)}
@@ -1523,7 +1874,7 @@ export const LedgerSheet: React.FC<{
                         <input
                           type="number"
                           value={quickRow.carryover}
-                          onChange={e => setQuickRow({ ...quickRow, carryover: e.target.value })}
+                          onChange={e => updateQuickField('carryover', e.target.value)}
                           onKeyDown={e => e.key === 'Enter' && !e.nativeEvent.isComposing && handleQuickAdd()}
                           placeholder="繰越"
                           className="w-full px-1.5 py-1 bg-white border border-purple-200 rounded text-right text-xs focus:border-purple-500 outline-none"
@@ -1533,7 +1884,7 @@ export const LedgerSheet: React.FC<{
                         <input
                           type="number"
                           value={quickRow.marketSales}
-                          onChange={e => setQuickRow({ ...quickRow, marketSales: e.target.value })}
+                          onChange={e => updateQuickField('marketSales', e.target.value)}
                           onKeyDown={e => e.key === 'Enter' && !e.nativeEvent.isComposing && handleQuickAdd()}
                           placeholder="市場売"
                           className="w-full px-1.5 py-1 bg-white border border-emerald-200 rounded text-right text-xs focus:border-emerald-500 outline-none"
@@ -1543,7 +1894,7 @@ export const LedgerSheet: React.FC<{
                         <input
                           type="number"
                           value={quickRow.goldSales}
-                          onChange={e => setQuickRow({ ...quickRow, goldSales: e.target.value })}
+                          onChange={e => updateQuickField('goldSales', e.target.value)}
                           onKeyDown={e => e.key === 'Enter' && !e.nativeEvent.isComposing && handleQuickAdd()}
                           placeholder="金売上"
                           className="w-full px-1.5 py-1 bg-white border border-amber-300 rounded text-right text-xs focus:border-amber-600 outline-none"
@@ -1553,17 +1904,27 @@ export const LedgerSheet: React.FC<{
                         <input
                           type="number"
                           value={quickRow.yahooSales}
-                          onChange={e => setQuickRow({ ...quickRow, yahooSales: e.target.value })}
+                          onChange={e => updateQuickField('yahooSales', e.target.value)}
                           onKeyDown={e => e.key === 'Enter' && !e.nativeEvent.isComposing && handleQuickAdd()}
                           placeholder="Y売上"
                           className="w-full px-1.5 py-1 bg-white border border-gray-300 rounded text-right text-xs outline-none"
+                        />
+                      </td>
+                      <td className="p-1 border-r border-gray-200 bg-rose-50/40">
+                        <input
+                          type="number"
+                          value={quickRow.mercariSales}
+                          onChange={e => updateQuickField('mercariSales', e.target.value)}
+                          onKeyDown={e => e.key === 'Enter' && !e.nativeEvent.isComposing && handleQuickAdd()}
+                          placeholder="メルカリ"
+                          className="w-full px-1.5 py-1 bg-white border border-rose-200 rounded text-right text-xs focus:border-rose-500 outline-none"
                         />
                       </td>
                       <td className="p-1 border-r border-gray-200">
                         <input
                           type="number"
                           value={quickRow.recoverySales}
-                          onChange={e => setQuickRow({ ...quickRow, recoverySales: e.target.value })}
+                          onChange={e => updateQuickField('recoverySales', e.target.value)}
                           onKeyDown={e => e.key === 'Enter' && !e.nativeEvent.isComposing && handleQuickAdd()}
                           placeholder="回収"
                           className="w-full px-1.5 py-1 bg-white border border-gray-300 rounded text-right text-xs outline-none"
@@ -1578,11 +1939,42 @@ export const LedgerSheet: React.FC<{
                           '自動'
                         )}
                       </td>
+                      <td className="p-1 border-r border-gray-200 bg-orange-50/40">
+                        <input
+                          type="number"
+                          value={quickRow.platformFee}
+                          onChange={e => {
+                            const v = e.target.value;
+                            if (v === '') {
+                              setIsQuickManualFee(false);
+                              const auto = calcDefaultPlatformFee(Number(quickRow.yahooSales), Number(quickRow.mercariSales));
+                              setQuickRow(prev => ({ ...prev, platformFee: auto > 0 ? String(auto) : '' }));
+                            } else {
+                              setIsQuickManualFee(true);
+                              setQuickRow(prev => ({ ...prev, platformFee: v }));
+                            }
+                          }}
+                          onKeyDown={e => e.key === 'Enter' && !e.nativeEvent.isComposing && handleQuickAdd()}
+                          placeholder="10%自動"
+                          title="ヤフオク・メルカリ売上の10%自動算出（上書き可）"
+                          className="w-full px-1 py-1 bg-white border border-orange-200 rounded text-right text-xs focus:border-orange-500 outline-none"
+                        />
+                      </td>
+                      <td className="p-1 border-r border-gray-200">
+                        <input
+                          type="number"
+                          value={quickRow.shippingCost}
+                          onChange={e => updateQuickField('shippingCost', e.target.value)}
+                          onKeyDown={e => e.key === 'Enter' && !e.nativeEvent.isComposing && handleQuickAdd()}
+                          placeholder="送料"
+                          className="w-full px-1 py-1 bg-white border border-gray-300 rounded text-right text-xs outline-none"
+                        />
+                      </td>
                       <td className="p-1 border-r border-gray-200">
                         <input
                           type="number"
                           value={quickRow.transportCost}
-                          onChange={e => setQuickRow({ ...quickRow, transportCost: e.target.value })}
+                          onChange={e => updateQuickField('transportCost', e.target.value)}
                           onKeyDown={e => e.key === 'Enter' && !e.nativeEvent.isComposing && handleQuickAdd()}
                           placeholder="交通費"
                           className="w-full px-1 py-1 bg-white border border-gray-300 rounded text-right text-xs outline-none"
@@ -1592,7 +1984,7 @@ export const LedgerSheet: React.FC<{
                         <input
                           type="number"
                           value={quickRow.disposalCost}
-                          onChange={e => setQuickRow({ ...quickRow, disposalCost: e.target.value })}
+                          onChange={e => updateQuickField('disposalCost', e.target.value)}
                           onKeyDown={e => e.key === 'Enter' && !e.nativeEvent.isComposing && handleQuickAdd()}
                           placeholder="処分費"
                           className="w-full px-1 py-1 bg-white border border-gray-300 rounded text-right text-xs outline-none"
@@ -1601,7 +1993,7 @@ export const LedgerSheet: React.FC<{
                       <td className="p-1 border-r border-gray-200 text-center font-sans">
                         <select
                           value={quickRow.status}
-                          onChange={e => setQuickRow({ ...quickRow, status: e.target.value })}
+                          onChange={e => updateQuickField('status', e.target.value)}
                           className="px-1 py-1 bg-white border border-gray-300 rounded text-[10px] outline-none"
                         >
                           {STATUS_LIST.map(st => <option key={st} value={st}>{st}</option>)}
@@ -1611,7 +2003,7 @@ export const LedgerSheet: React.FC<{
                         <input
                           type="text"
                           value={quickRow.memo}
-                          onChange={e => setQuickRow({ ...quickRow, memo: e.target.value })}
+                          onChange={e => updateQuickField('memo', e.target.value)}
                           onKeyDown={e => e.key === 'Enter' && !e.nativeEvent.isComposing && handleQuickAdd()}
                           placeholder="メモ (Enterで即追加)"
                           className="w-full px-1.5 py-1 bg-white border border-gray-300 rounded font-sans text-xs focus:border-emerald-600 outline-none"
@@ -1652,11 +2044,20 @@ export const LedgerSheet: React.FC<{
                       <td className="px-2 py-1.5 text-right border-r border-gray-300 font-mono">
                         ¥{formatCurrency(filteredRecords.reduce((s, r) => s + r.yahooSales, 0))}
                       </td>
+                      <td className="px-2 py-1.5 text-right border-r border-gray-300 text-rose-800 bg-rose-100/60 font-mono">
+                        ¥{formatCurrency(filteredRecords.reduce((s, r) => s + (r.mercariSales || 0), 0))}
+                      </td>
                       <td className="px-2 py-1.5 text-right border-r border-gray-300 font-mono">
                         ¥{formatCurrency(filteredRecords.reduce((s, r) => s + r.recoverySales, 0))}
                       </td>
                       <td className="px-2 py-1.5 text-right border-r border-gray-300 text-emerald-800 bg-emerald-200/50 font-mono">
                         ¥{formatCurrency(filteredRecords.reduce((s, r) => s + calcRecordGross(r), 0))}
+                      </td>
+                      <td className="px-2 py-1.5 text-right border-r border-gray-300 text-orange-800 bg-orange-100/60 font-mono">
+                        ¥{formatCurrency(filteredRecords.reduce((s, r) => s + (r.platformFee || 0), 0))}
+                      </td>
+                      <td className="px-2 py-1.5 text-right border-r border-gray-300 font-mono">
+                        ¥{formatCurrency(filteredRecords.reduce((s, r) => s + (r.shippingCost || 0), 0))}
                       </td>
                       <td className="px-2 py-1.5 text-right border-r border-gray-300 font-mono">
                         ¥{formatCurrency(filteredRecords.reduce((s, r) => s + r.transportCost, 0))}
@@ -1674,7 +2075,7 @@ export const LedgerSheet: React.FC<{
 
               <div className="p-2 bg-gray-50 border-t border-gray-200 flex items-center justify-between flex-wrap gap-2">
                 <span className="text-[11px] text-gray-500">
-                  ※ 任意のセルをクリックして直接編集できます。最下部の「＋入力」行で Tab 移動 ＆ Enter で連続追加できます。
+                  ※ 任意のセルを1クリックして直接編集できます。古物台帳項目（住所・職業・生年月日・身分証）の入力は各行の📄ボタンまたは詳細モーダルから行えます。
                 </span>
                 <button
                   onClick={onOpenAddModal}

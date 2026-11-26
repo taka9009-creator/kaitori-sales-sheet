@@ -554,9 +554,10 @@ export const DailyChart: React.FC<{ records: DealRecord[] }> = ({ records }) => 
         const goldSales = list.reduce((s, r) => s + (r.goldSales || 0), 0);
         const marketSales = list.reduce((s, r) => s + (r.marketSales || 0), 0);
         const yahooSales = list.reduce((s, r) => s + (r.yahooSales || 0), 0);
+        const mercariSales = list.reduce((s, r) => s + (r.mercariSales || 0), 0);
         const recoverySales = list.reduce((s, r) => s + (r.recoverySales || 0), 0);
         const carryoverTotal = list.reduce((s, r) => s + (r.carryover || 0), 0);
-        const salesTotal = goldSales + marketSales + yahooSales + recoverySales;
+        const salesTotal = goldSales + marketSales + yahooSales + mercariSales + recoverySales;
         const grossProfit = salesTotal - purchaseTotal;
         const dealsCount = list.length;
         const profitMargin = salesTotal > 0 ? (grossProfit / salesTotal) * 100 : 0;
@@ -568,6 +569,7 @@ export const DailyChart: React.FC<{ records: DealRecord[] }> = ({ records }) => 
           goldSales,
           marketSales,
           yahooSales,
+          mercariSales,
           recoverySales,
           carryoverTotal,
           dealsCount,
@@ -742,7 +744,7 @@ export const DailyChart: React.FC<{ records: DealRecord[] }> = ({ records }) => 
                     <th className="py-2 px-3 border-r text-right">買取仕入</th>
                     <th className="py-2 px-3 border-r text-right">金売上</th>
                     <th className="py-2 px-3 border-r text-right">市場売上</th>
-                    <th className="py-2 px-3 border-r text-right">Y・回収他</th>
+                    <th className="py-2 px-3 border-r text-right">EC・回収他</th>
                     <th className="py-2 px-3 border-r text-right font-bold">売上合計</th>
                     <th className="py-2 px-3 border-r text-right font-bold">日別粗利</th>
                     <th className="py-2 px-3 text-right">粗利率</th>
@@ -756,7 +758,7 @@ export const DailyChart: React.FC<{ records: DealRecord[] }> = ({ records }) => 
                       <td className="py-1.5 px-3 text-right border-r text-rose-700">¥{formatCurrency(d.purchaseTotal)}</td>
                       <td className="py-1.5 px-3 text-right border-r text-amber-800">¥{formatCurrency(d.goldSales)}</td>
                       <td className="py-1.5 px-3 text-right border-r text-emerald-800">¥{formatCurrency(d.marketSales)}</td>
-                      <td className="py-1.5 px-3 text-right border-r text-gray-700">¥{formatCurrency(d.yahooSales + d.recoverySales)}</td>
+                      <td className="py-1.5 px-3 text-right border-r text-gray-700">¥{formatCurrency(d.yahooSales + d.mercariSales + d.recoverySales)}</td>
                       <td className="py-1.5 px-3 text-right border-r font-bold text-blue-800">¥{formatCurrency(d.salesTotal)}</td>
                       <td className={`py-1.5 px-3 text-right border-r font-bold ${d.grossProfit >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
                         ¥{formatCurrency(d.grossProfit)}
@@ -787,7 +789,8 @@ export const PersonalAnalyticsView: React.FC<{
   const channels = [
     { label: '金・地金（即換金）', val: matsuura.goldSalesTotal, color: 'bg-amber-500', textColor: 'text-amber-800' },
     { label: '古物市場（道具市・ブランド市）', val: matsuura.marketSalesTotal, color: 'bg-emerald-500', textColor: 'text-emerald-800' },
-    { label: 'ヤフオク・EC販売', val: matsuura.yahooSalesTotal, color: 'bg-blue-500', textColor: 'text-blue-800' },
+    { label: 'ヤフオク販売', val: matsuura.yahooSalesTotal, color: 'bg-blue-500', textColor: 'text-blue-800' },
+    { label: 'メルカリShops販売', val: matsuura.mercariSalesTotal, color: 'bg-rose-500', textColor: 'text-rose-800' },
     { label: '回収・不用品・その他売上', val: matsuura.recoverySalesTotal, color: 'bg-slate-500', textColor: 'text-slate-800' },
   ];
 
@@ -872,7 +875,12 @@ export const PersonalAnalyticsView: React.FC<{
               </div>
             </div>
             <div className="flex items-center justify-between py-1.5 border-b border-gray-100">
-              <span className="font-sans text-gray-600">⑤ (-) 現場諸経費 (交通費・処分費計)</span>
+              <div>
+                <div className="font-sans text-gray-600">⑤ (-) 現場・EC諸経費（手数料・送料・交通費・処分費）</div>
+                <div className="text-[10px] text-gray-400 font-mono">
+                  手数料¥{formatCurrency(matsuura.platformFeeTotal)} / 送料¥{formatCurrency(matsuura.shippingCostTotal)} / 交通¥{formatCurrency(matsuura.transportCostTotal)} / 処分¥{formatCurrency(matsuura.disposalCostTotal)}
+                </div>
+              </div>
               <span className="font-semibold text-rose-700">- ¥{formatCurrency(matsuura.otherExpenses)}</span>
             </div>
             <div className={`flex items-center justify-between py-2.5 px-3 rounded-lg border-2 ${matsuura.netProfit >= 0 ? 'bg-cyan-50 border-cyan-400' : 'bg-rose-50 border-rose-300'}`}>

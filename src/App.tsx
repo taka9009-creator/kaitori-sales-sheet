@@ -4,85 +4,36 @@ import {
 } from 'lucide-react';
 import {
   DealRecord, MarketItem, AdCosts, GoldPreset, STAFF_LIST,
-  INITIAL_RECORDS, INITIAL_MARKET_ITEMS, INITIAL_AD_COSTS, INITIAL_MONTHS,
-  formatCurrency, calcRecordSales
+  INITIAL_AD_COSTS, formatCurrency, calcRecordSales, isStagnantRecord
 } from './data';
+import { storageService } from './services/storageService';
 import { SheetHeader, LedgerSheet, StatusFilterType } from './components/LedgerSheet';
 import { MarketView, PersonalAnalyticsView, MediaAnalyticsView } from './components/MarketAndAnalytics';
 import { AddDealModal, AddDealOptions, GoldCalcModal, ExportModal } from './components/Modals';
 import { GuideModal, GuideActionType } from './components/GuideModal';
 
-const STORAGE_KEYS = {
-  RECORDS: 'kaitori_pro_records_v3',
-  MARKET: 'kaitori_pro_market_v3',
-  TITLE: 'kaitori_pro_title_v3',
-  AD_COSTS: 'kaitori_pro_adcosts_v3',
-  PREV_CARRYOVER: 'kaitori_pro_prev_carryover_v3',
-  MONTHS: 'kaitori_pro_months_v3',
-  TARGET_GROSS: 'kaitori_pro_target_gross_v3',
-};
-
 export default function App() {
-  const [sheetTitle, setSheetTitle] = useState<string>(() => {
-    return localStorage.getItem(STORAGE_KEYS.TITLE) || '松浦売上管理表';
-  });
+  const [initialLoaded] = useState(() => storageService.loadState());
 
-  const [months, setMonths] = useState<string[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.MONTHS);
-      return saved ? JSON.parse(saved) : INITIAL_MONTHS;
-    } catch {
-      return INITIAL_MONTHS;
-    }
-  });
-
-  const [activeMonth, setActiveMonth] = useState<string>('2026/9');
+  const [sheetTitle, setSheetTitle] = useState<string>(initialLoaded.sheetTitle);
+  const [months, setMonths] = useState<string[]>(initialLoaded.months);
+  const [activeMonth, setActiveMonth] = useState<string>(initialLoaded.months[0] || '2026/9');
   const [activeTab, setActiveTab] = useState<string>('ledger'); // 'ledger' | '市場管理' | '収支・日別分析' | '媒体別分析' | '繰越管理'
   const [viewMode, setViewMode] = useState<'table' | 'card'>('table');
+  const [targetGrossProfit, setTargetGrossProfit] = useState<number>(initialLoaded.targetGrossProfit);
 
-  const [targetGrossProfit, setTargetGrossProfit] = useState<number>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.TARGET_GROSS);
-    return saved ? Number(saved) : 0;
-  });
-
-  const [records, setRecords] = useState<DealRecord[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.RECORDS);
-      return saved ? JSON.parse(saved) : INITIAL_RECORDS;
-    } catch {
-      return INITIAL_RECORDS;
-    }
-  });
-
-  const [history, setHistory] = useState<DealRecord[][]>(() => [records]);
+  const [records, setRecords] = useState<DealRecord[]>(initialLoaded.records);
+  const [history, setHistory] = useState<DealRecord[][]>(() => [initialLoaded.records]);
   const [historyIndex, setHistoryIndex] = useState<number>(0);
 
-  const [marketItems, setMarketItems] = useState<MarketItem[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.MARKET);
-      return saved ? JSON.parse(saved) : INITIAL_MARKET_ITEMS;
-    } catch {
-      return INITIAL_MARKET_ITEMS;
-    }
-  });
-
-  const [adCosts, setAdCosts] = useState<AdCosts>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.AD_COSTS);
-      return saved ? JSON.parse(saved) : INITIAL_AD_COSTS;
-    } catch {
-      return INITIAL_AD_COSTS;
-    }
-  });
-
-  const [prevCarryover, setPrevCarryover] = useState<number>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.PREV_CARRYOVER);
-    return saved ? Number(saved) : 0;
-  });
+  const [marketItems, setMarketItems] = useState<MarketItem[]>(initialLoaded.marketItems);
+  const [adCosts, setAdCosts] = useState<AdCosts>(initialLoaded.adCosts);
+  const [prevCarryover, setPrevCarryover] = useState<number>(initialLoaded.prevCarryover);
 
   const [statusFilter, setStatusFilter] = useState<StatusFilterType>('すべて');
   const [mediaFilter, setMediaFilter] = useState<string>('すべて');
   const [isAddOpen, setIsAddOpen] = useState<boolean>(false);
+  const [editingRecord, setEditingRecord] = useState<DealRecord | null>(null);
   const [isGoldOpen, setIsGoldOpen] = useState<boolean>(false);
   const [isExportOpen, setIsExportOpen] = useState<boolean>(false);
   const [isGuideOpen, setIsGuideOpen] = useState<boolean>(false);
@@ -96,6 +47,7 @@ export default function App() {
         setIsGoldOpen(true);
         break;
       case 'add':
+        setEditingRecord(null);
         setGoldPreset(null);
         setIsAddOpen(true);
         break;
@@ -128,20 +80,18 @@ export default function App() {
   };
 
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEYS.RECORDS, JSON.stringify(records));
-      localStorage.setItem(STORAGE_KEYS.MARKET, JSON.stringify(marketItems));
-      localStorage.setItem(STORAGE_KEYS.TITLE, sheetTitle);
-      localStorage.setItem(STORAGE_KEYS.AD_COSTS, JSON.stringify(adCosts));
-      localStorage.setItem(STORAGE_KEYS.PREV_CARRYOVER, String(prevCarryover));
-      localStorage.setItem(STORAGE_KEYS.MONTHS, JSON.stringify(months));
-      localStorage.setItem(STORAGE_KEYS.TARGET_GROSS, String(targetGrossProfit));
-      const now = new Date();
-      const timeStr = now.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-      setLastSavedText(`自動保存済 (${timeStr})`);
-    } catch (e) {
-      console.error('LocalStorage save failed:', e);
-    }
+    storageService.saveState({
+      sheetTitle,
+      months,
+      records,
+      marketItems,
+      adCosts,
+      prevCarryover,
+      targetGrossProfit,
+    });
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    setLastSavedText(`自動保存済 (${timeStr})`);
   }, [records, marketItems, sheetTitle, adCosts, prevCarryover, months, targetGrossProfit]);
 
   const currentMonthRecords = useMemo(
@@ -258,6 +208,7 @@ export default function App() {
   };
 
   const handleApplyGoldToDeal = (preset: GoldPreset) => {
+    setEditingRecord(null);
     setGoldPreset(preset);
     setIsAddOpen(true);
   };
@@ -291,9 +242,12 @@ export default function App() {
       goldSales: 0,
       marketSales: 0,
       yahooSales: 0,
+      mercariSales: 0,
       recoverySales: 0,
       estimatedGoldGrossProfit: 0,
       estimatedYahooGrossProfit: 0,
+      platformFee: 0,
+      shippingCost: 0,
       transportCost: 0,
       disposalCost: 0,
       status: '全量繰越(未売却)',
@@ -336,9 +290,12 @@ export default function App() {
       marketSales: netProceeds,
       goldSales: 0,
       yahooSales: 0,
+      mercariSales: 0,
       recoverySales: 0,
       estimatedGoldGrossProfit: 0,
       estimatedYahooGrossProfit: 0,
+      platformFee: 0,
+      shippingCost: 0,
       transportCost: 0,
       disposalCost: 0,
       memo: `${item.targetMarketName}にて落札(額面¥${formatCurrency(item.actualSoldPrice)}・手数料${item.commissionRate}%)`,
@@ -349,22 +306,18 @@ export default function App() {
   };
 
   const handleResetDefault = () => {
+    storageService.clearState();
     setRecords([]);
     setHistory([[]]);
     setHistoryIndex(0);
     setMarketItems([]);
     setAdCosts({
-      松浦: 0,
-      mediaCosts: {
-        チラシ: 0,
-        HP: 0,
-        リピート: 0,
-        紹介: 0,
-        '看板/その他': 0,
-      },
+      松浦: INITIAL_AD_COSTS.松浦,
+      mediaCosts: { ...INITIAL_AD_COSTS.mediaCosts },
     });
     setPrevCarryover(0);
     setTargetGrossProfit(0);
+    setEditingRecord(null);
     setStatusFilter('すべて');
     setMediaFilter('すべて');
   };
@@ -418,6 +371,7 @@ export default function App() {
   const totalGross = totalSales - totalPurchase;
   const carryoverRecords = currentMonthRecords.filter(r => r.carryover > 0);
   const currentCarryoverSum = carryoverRecords.reduce((s, r) => s + r.carryover, 0);
+  const currentStagnantCount = currentMonthRecords.filter(r => isStagnantRecord(r, 30)).length;
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-gray-100 font-sans relative">
@@ -438,6 +392,7 @@ export default function App() {
         sheetTitle={sheetTitle}
         onTitleChange={setSheetTitle}
         onOpenAddModal={() => {
+          setEditingRecord(null);
           setGoldPreset(null);
           setIsAddOpen(true);
         }}
@@ -446,6 +401,7 @@ export default function App() {
         onOpenGuide={() => setIsGuideOpen(true)}
         statusFilter={statusFilter}
         onChangeStatusFilter={setStatusFilter}
+        stagnantCount={currentStagnantCount}
         mediaFilter={mediaFilter}
         onChangeMediaFilter={setMediaFilter}
         onUndo={handleUndo}
@@ -462,6 +418,7 @@ export default function App() {
         {activeTab === 'ledger' && (
           <LedgerSheet
             records={currentMonthRecords}
+            allRecords={records}
             adCosts={adCosts}
             currentMonth={activeMonth}
             targetGrossProfit={targetGrossProfit}
@@ -472,12 +429,20 @@ export default function App() {
             onDuplicateRecord={handleDuplicateRecord}
             onSendToMarket={handleSendDealToMarket}
             onOpenAddModal={() => {
+              setEditingRecord(null);
+              setGoldPreset(null);
+              setIsAddOpen(true);
+            }}
+            onEditRecordModal={rec => {
+              setEditingRecord(rec);
               setGoldPreset(null);
               setIsAddOpen(true);
             }}
             onOpenGuide={() => setIsGuideOpen(true)}
             onGuideAction={handleGuideAction}
             statusFilter={statusFilter}
+            onChangeStatusFilter={setStatusFilter}
+            onSelectMonth={setActiveMonth}
             mediaFilter={mediaFilter}
             onUpdateMediaAdCost={handleUpdateMediaAdCost}
             viewMode={viewMode}
@@ -704,10 +669,16 @@ export default function App() {
 
       <AddDealModal
         isOpen={isAddOpen}
-        onClose={() => setIsAddOpen(false)}
+        onClose={() => {
+          setIsAddOpen(false);
+          setEditingRecord(null);
+        }}
         onAdd={handleAddRecord}
         preset={goldPreset}
         currentMonth={activeMonth}
+        existingRecords={records}
+        editingRecord={editingRecord}
+        onUpdate={handleUpdateRecord}
       />
 
       <GoldCalcModal
@@ -720,6 +691,7 @@ export default function App() {
         isOpen={isExportOpen}
         onClose={() => setIsExportOpen(false)}
         records={currentMonthRecords}
+        allRecords={records}
         marketItems={marketItems}
         monthName={activeMonth}
         onImportRecords={imported => pushRecordsState([...imported, ...records])}
