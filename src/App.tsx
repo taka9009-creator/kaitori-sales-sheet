@@ -10,7 +10,7 @@ import { storageService } from './services/storageService';
 import { SheetHeader, LedgerSheet, StatusFilterType } from './components/LedgerSheet';
 import { MarketView, PersonalAnalyticsView, MediaAnalyticsView } from './components/MarketAndAnalytics';
 import { AddDealModal, AddDealOptions, GoldCalcModal, ExportModal } from './components/Modals';
-import { GuideModal, GuideActionType } from './components/GuideModal';
+import { GuideModal, GuideActionType, GuideWorkflowStats } from './components/GuideModal';
 
 export default function App() {
   const [initialLoaded] = useState(() => storageService.loadState());
@@ -36,6 +36,7 @@ export default function App() {
   const [editingRecord, setEditingRecord] = useState<DealRecord | null>(null);
   const [isGoldOpen, setIsGoldOpen] = useState<boolean>(false);
   const [isExportOpen, setIsExportOpen] = useState<boolean>(false);
+  const [exportInitialTab, setExportInitialTab] = useState<'spreadsheet' | 'kobutsu'>('spreadsheet');
   const [isGuideOpen, setIsGuideOpen] = useState<boolean>(false);
   const [goldPreset, setGoldPreset] = useState<GoldPreset | null>(null);
   const [lastSavedText, setLastSavedText] = useState<string>('変更を自動保存済');
@@ -66,7 +67,30 @@ export default function App() {
       case 'carryover':
         setActiveTab('繰越管理');
         break;
+      case 'stagnant': {
+        setActiveTab('ledger');
+        const currentStagnants = records.filter(
+          r => (r.month || '2026/9') === activeMonth && isStagnantRecord(r, 30)
+        );
+        if (currentStagnants.length > 0) {
+          setStatusFilter('滞留30日超');
+        } else {
+          const firstStagnant = records.find(r => isStagnantRecord(r, 30));
+          if (firstStagnant) {
+            setActiveMonth(firstStagnant.month || '2026/9');
+            setStatusFilter('滞留30日超');
+          } else {
+            showToast('現在、30日超の滞留在庫はありません 👍');
+          }
+        }
+        break;
+      }
       case 'export':
+        setExportInitialTab('spreadsheet');
+        setIsExportOpen(true);
+        break;
+      case 'kobutsu':
+        setExportInitialTab('kobutsu');
         setIsExportOpen(true);
         break;
     }
@@ -373,18 +397,38 @@ export default function App() {
   const currentCarryoverSum = carryoverRecords.reduce((s, r) => s + r.carryover, 0);
   const currentStagnantCount = currentMonthRecords.filter(r => isStagnantRecord(r, 30)).length;
 
+  const guideStats: GuideWorkflowStats = useMemo(() => {
+    const kobutsuFilledCount = records.filter(r =>
+      Boolean(
+        r.customerAddress?.trim() ||
+        r.customerOccupation?.trim() ||
+        r.customerBirthDate?.trim() ||
+        r.idDocType?.trim() ||
+        r.idDocNumber?.trim()
+      )
+    ).length;
+    const stagnantCount = records.filter(r => isStagnantRecord(r, 30)).length;
+    return {
+      totalRecords: records.length,
+      kobutsuFilledCount,
+      stagnantCount,
+    };
+  }, [records]);
+
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-gray-100 font-sans relative">
       {toastMessage && (
         <div className="fixed bottom-12 right-4 z-50 bg-slate-900 text-white px-4 py-2.5 rounded-xl shadow-xl border border-emerald-500/50 text-xs font-semibold flex items-center gap-2 animate-fade-in">
           <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
           <span>{toastMessage}</span>
-          <button
-            onClick={() => setActiveTab('市場管理')}
-            className="ml-2 px-2 py-0.5 bg-emerald-600 hover:bg-emerald-500 rounded text-[11px] font-bold cursor-pointer"
-          >
-            市場管理を開く
-          </button>
+          {toastMessage.includes('市場管理') && (
+            <button
+              onClick={() => setActiveTab('市場管理')}
+              className="ml-2 px-2 py-0.5 bg-emerald-600 hover:bg-emerald-500 rounded text-[11px] font-bold cursor-pointer"
+            >
+              市場管理を開く
+            </button>
+          )}
         </div>
       )}
 
@@ -397,7 +441,10 @@ export default function App() {
           setIsAddOpen(true);
         }}
         onOpenGoldCalc={() => setIsGoldOpen(true)}
-        onOpenExportModal={() => setIsExportOpen(true)}
+        onOpenExportModal={() => {
+          setExportInitialTab('spreadsheet');
+          setIsExportOpen(true);
+        }}
         onOpenGuide={() => setIsGuideOpen(true)}
         statusFilter={statusFilter}
         onChangeStatusFilter={setStatusFilter}
@@ -694,6 +741,7 @@ export default function App() {
         allRecords={records}
         marketItems={marketItems}
         monthName={activeMonth}
+        initialTab={exportInitialTab}
         onImportRecords={imported => pushRecordsState([...imported, ...records])}
         onResetDefault={handleResetDefault}
       />
@@ -702,6 +750,7 @@ export default function App() {
         isOpen={isGuideOpen}
         onClose={() => setIsGuideOpen(false)}
         onNavigateAction={handleGuideAction}
+        stats={guideStats}
       />
     </div>
   );

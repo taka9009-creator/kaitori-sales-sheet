@@ -1448,6 +1448,7 @@ export const ExportModal: React.FC<{
   allRecords?: DealRecord[];
   marketItems: MarketItem[];
   monthName: string;
+  initialTab?: 'spreadsheet' | 'kobutsu';
   onImportRecords: (recs: DealRecord[]) => void;
   onResetDefault: () => void;
 }> = ({
@@ -1457,10 +1458,11 @@ export const ExportModal: React.FC<{
   allRecords,
   marketItems,
   monthName,
+  initialTab = 'spreadsheet',
   onImportRecords,
   onResetDefault,
 }) => {
-  const [modalTab, setModalTab] = useState<'spreadsheet' | 'kobutsu'>('spreadsheet');
+  const [modalTab, setModalTab] = useState<'spreadsheet' | 'kobutsu'>(initialTab);
   const [copied, setCopied] = useState(false);
   const [pasteText, setPasteText] = useState('');
   const [importMsg, setImportMsg] = useState<string | null>(null);
@@ -1486,8 +1488,9 @@ export const ExportModal: React.FC<{
       const r = getMonthRange(monthName);
       setStartDate(r.start);
       setEndDate(r.end);
+      setModalTab(initialTab ?? 'spreadsheet');
     }
-  }, [isOpen, monthName]);
+  }, [isOpen, monthName, initialTab]);
 
   const sourceRecords = allRecords && allRecords.length > 0 ? allRecords : records;
 

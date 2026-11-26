@@ -1160,7 +1160,7 @@ export const LedgerSheet: React.FC<{
                 <div className="flex items-center gap-2">
                   <MapIcon className="w-4 h-4 text-sky-700" />
                   <span className="font-bold text-xs sm:text-sm text-sky-950">
-                    はじめての方へ：まずは1枚の地図で全体の流れをつかみましょう（データ登録後に自動で隠れます）
+                    はじめての方へ：まずは1枚の地図で全体の流れをつかみましょう（古物台帳・メルカリShops・滞留アラート対応）
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
@@ -1170,7 +1170,7 @@ export const LedgerSheet: React.FC<{
                     className="px-2.5 py-1 bg-white hover:bg-sky-100 text-sky-800 border border-sky-300 rounded-lg text-[11px] font-bold flex items-center gap-1 cursor-pointer"
                   >
                     <BookOpen className="w-3.5 h-3.5" />
-                    <span>細かい操作ガイドを開く</span>
+                    <span>目的別手順・計算ルールも見る</span>
                   </button>
                   <button
                     type="button"
